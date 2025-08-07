@@ -212,8 +212,26 @@ python test_api_gateway.py
 
 ### Como Funciona
 
-O projeto inclui um pipeline completo de CI/CD com **GitHub Actions** que é executado automaticamente em:
+O projeto inclui um pipeline completo de CI/CD com **GitHub Actions** que utiliza **OpenID Connect (OIDC)** para autenticação segura com AWS, eliminando a necessidade de chaves de acesso de longo prazo.
 
+### 🔐 Autenticação OIDC
+
+#### Benefícios da Autenticação OIDC:
+- ✅ **Segurança Aprimorada**: Sem credenciais de longo prazo armazenadas
+- ✅ **Tokens Temporários**: Credenciais com tempo de vida limitado
+- ✅ **Auditoria Melhorada**: Rastreamento detalhado de acesso
+- ✅ **Rotação Automática**: Não requer rotação manual de chaves
+
+#### Configuração OIDC:
+```bash
+# Executar script de configuração automática
+cd terraform
+../scripts/setup-github-oidc.sh
+```
+
+### Pipeline Execution
+
+O pipeline é executado automaticamente em:
 - **Push** para branches `main` e `develop`
 - **Pull Requests** para `main` e `develop`
 
@@ -244,13 +262,33 @@ O projeto inclui um pipeline completo de CI/CD com **GitHub Actions** que é exe
 
 ### Configuração do CI/CD
 
-#### Secrets Necessários no GitHub
+#### Configuração OIDC (Recomendado)
+
+1. **Configurar Infraestrutura OIDC**:
+```bash
+cd terraform
+../scripts/setup-github-oidc.sh
+```
+
+2. **Configurar Repository Variables no GitHub**:
+   - Acesse: `Settings > Secrets and variables > Actions > Variables`
+   - Adicione as seguintes **Repository Variables**:
+```
+AWS_ROLE_TO_ASSUME = arn:aws:iam::ACCOUNT_ID:role/lambda-container-api-dev-github-actions-role
+TERRAFORM_STATE_BUCKET = your-terraform-state-bucket-name
+```
+
+#### Configuração Alternativa (Access Keys)
+
+Se preferir usar chaves de acesso tradicionais, configure os seguintes **Secrets**:
 
 ```
 AWS_ACCESS_KEY_ID=your-access-key
 AWS_SECRET_ACCESS_KEY=your-secret-key
 AWS_REGION=us-east-1
 ```
+
+⚠️ **Nota**: OIDC é mais seguro e é a abordagem recomendada.
 
 #### Arquivo de Pipeline
 
@@ -318,15 +356,34 @@ ecr_repository_url = "148761658767.dkr.ecr.us-east-1.amazonaws.com/lambda-contai
 
 ⚠️ **IMPORTANTE**: Para evitar custos, sempre execute o destroy após os testes:
 
+### Opção 1: Script Automatizado (Recomendado)
+
 ```bash
-# Destruir infraestrutura
+# Usar script que força exclusão do ECR com imagens
+cd terraform
+../scripts/force-destroy.sh
+```
+
+Este script irá:
+- Verificar imagens existentes no ECR
+- Executar `terraform destroy` com confirmação
+- Forçar exclusão do repositório ECR mesmo com imagens
+- Fazer limpeza adicional se necessário
+
+### Opção 2: Terraform Destroy Manual
+
+```bash
+# Destruir infraestrutura manualmente
 cd terraform
 terraform destroy
+```
 
-# Limpar imagens ECR (opcional)
-aws ecr delete-repository --repository-name lambda-container-api-dev --force
+**Nota**: Com a configuração `force_delete = true` no ECR, o repositório será excluído automaticamente mesmo contendo imagens.
 
-# Limpar backend S3 (opcional - cuidado com outros projetos)
+### Limpeza Adicional (Opcional)
+
+```bash
+# Limpar backend S3 (cuidado com outros projetos)
 # aws s3 rb s3://terraform-state-lambda-container-api-TIMESTAMP --force
 # aws dynamodb delete-table --table-name terraform-state-lock
 ```

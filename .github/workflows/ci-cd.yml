@@ -11,6 +11,13 @@ env:
   ECR_REPOSITORY: lambda-container-api
   TERRAFORM_VERSION: 1.5.0
 
+# Global permissions for OIDC
+permissions:
+  id-token: write   # Required for OIDC
+  contents: read    # Required for checkout
+  security-events: write  # Required for security scanning
+  pull-requests: write    # Required for PR comments
+
 jobs:
   test:
     name: Test and Quality Checks
@@ -159,11 +166,6 @@ jobs:
     needs: [test, security-scan]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     
-    permissions:
-      id-token: write
-      contents: read
-      security-events: write
-    
     outputs:
       image-uri: ${{ steps.build-image.outputs.image }}
       image-tag: ${{ steps.meta.outputs.tags }}
@@ -176,8 +178,9 @@ jobs:
     - name: Configure AWS credentials using OIDC
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
         aws-region: ${{ env.AWS_REGION }}
+        role-session-name: GitHubActions-BuildAndPush-${{ github.run_id }}
         
     - name: Login to Amazon ECR
       id: login-ecr
@@ -297,10 +300,6 @@ jobs:
     needs: build-and-push
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     
-    permissions:
-      id-token: write
-      contents: read
-    
     outputs:
       api-url: ${{ steps.terraform-output.outputs.api_url }}
       lambda-function-name: ${{ steps.terraform-output.outputs.lambda_function_name }}
@@ -312,8 +311,9 @@ jobs:
     - name: Configure AWS credentials using OIDC
       uses: aws-actions/configure-aws-credentials@v4
       with:
-        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        role-to-assume: ${{ vars.AWS_ROLE_TO_ASSUME }}
         aws-region: ${{ env.AWS_REGION }}
+        role-session-name: GitHubActions-Deploy-${{ github.run_id }}
         
     - name: Setup Terraform
       uses: hashicorp/setup-terraform@v3
@@ -331,7 +331,7 @@ jobs:
       id: init
       run: |
         terraform init \
-          -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
+          -backend-config="bucket=${{ vars.TERRAFORM_STATE_BUCKET }}" \
           -backend-config="key=${{ github.repository }}/terraform.tfstate" \
           -backend-config="region=${{ env.AWS_REGION }}"
       working-directory: terraform
@@ -347,6 +347,8 @@ jobs:
         terraform plan -no-color -input=false \
           -var="ecr_image_tag=${{ github.sha }}" \
           -var="environment=${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}" \
+          -var="github_repository=${{ github.repository }}" \
+          -var="terraform_state_bucket=${{ vars.TERRAFORM_STATE_BUCKET }}" \
           -out=tfplan
       working-directory: terraform
       continue-on-error: true

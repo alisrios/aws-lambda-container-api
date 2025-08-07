@@ -372,6 +372,7 @@ test.html
 
 # Kiro directory (appears to be local tooling)
 .kiro/
+.kiro/*
 
 # Local scripts
 scripts/fix-lambda-image.ps1

@@ -98,3 +98,15 @@ variable "api_throttle_rate_limit" {
   type        = number
   default     = 2000
 }
+# GitHub OIDC Configuration
+variable "github_repository" {
+  description = "Nome do repositório GitHub no formato 'owner/repo'"
+  type        = string
+  default     = "your-username/aws-lambda-container-api"
+}
+
+variable "terraform_state_bucket" {
+  description = "Nome do bucket S3 para armazenar o estado do Terraform"
+  type        = string
+  default     = "terraform-state-lambda-container-api"
+}

@@ -6,15 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 6.0"
     }
-  }
-
-  backend "s3" {
-    bucket       = "bucket-state-locking"
-    key          = "lambda-container-api/terraform.tfstate"
-    region       = "us-east-1"
-    encrypt      = true
-    use_lockfile = true
-    #dynamodb_table = "terraform-state-lock"
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
