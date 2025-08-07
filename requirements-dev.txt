@@ -6,14 +6,12 @@ black==23.9.1
 isort==5.12.0
 flake8==6.1.0
 
-# Security scanning
-safety==2.3.5
+# Security scanning - Updated to compatible version
+safety==3.0.1
 bandit==1.7.5
-semgrep==1.45.0
 
 # Performance testing
 requests==2.31.0
-statistics==1.0.3.5
 
 # Additional testing utilities
 pytest-mock==3.11.1
