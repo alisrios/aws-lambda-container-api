@@ -1,4 +1,4 @@
-# AWS Lambda Container API
+# 🧪 AWS Lambda Container API - Teste Técnico
 
 [![CI/CD Pipeline](https://github.com/your-username/aws-lambda-container-api/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/your-username/aws-lambda-container-api/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -7,24 +7,269 @@
 [![AWS Lambda](https://img.shields.io/badge/AWS-%23FF9900.svg?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/lambda/)
 [![Terraform](https://img.shields.io/badge/terraform-%235835CC.svg?style=flat&logo=terraform&logoColor=white)](https://www.terraform.io/)
 
-Uma aplicação serverless completa demonstrando funções Lambda containerizadas com integração API Gateway, provisionamento automatizado de infraestrutura usando Terraform, e pipeline CI/CD automatizado.
+## 📋 Sobre o Projeto
 
-## 📋 Visão Geral
+Este projeto foi desenvolvido como resposta ao **Teste Técnico – Deploy de API com AWS e Terraform**. 
 
-Este projeto implementa uma API Python simples usando Flask, empacotada em container Docker, publicada no Amazon ECR, e deployada como função Lambda integrada com API Gateway HTTP. Todo o processo é automatizado através de pipeline CI/CD usando GitHub Actions.
+Implementa uma API Python simples usando Flask, empacotada em container Docker, publicada no Amazon ECR, e deployada como função Lambda integrada com API Gateway HTTP. Todo o processo é automatizado através de pipeline CI/CD usando GitHub Actions com backend remoto S3 para o estado do Terraform.
 
-### ✨ Funcionalidades
+### 🎯 Requisitos Atendidos
 
-- ✅ **API REST simples** com endpoints `/hello`, `/echo` e `/health`
-- ✅ **Containerização Docker** otimizada para AWS Lambda
-- ✅ **Infraestrutura como Código** usando Terraform
-- ✅ **Pipeline CI/CD automatizado** com GitHub Actions
-- ✅ **Testes abrangentes** (unitários, integração, end-to-end)
-- ✅ **Monitoramento e logging** com CloudWatch
-- ✅ **Segurança** com scanning de vulnerabilidades
-- ✅ **Performance otimizada** com cold start reduzido
+- ✅ **API funcional em Python** com Flask
+- ✅ **Rotas `/hello` e `/echo`** conforme especificado
+- ✅ **Container Docker** publicado no Amazon ECR
+- ✅ **Infraestrutura Terraform** com Lambda e API Gateway
+- ✅ **Backend remoto S3** para estado do Terraform
+- ✅ **Outputs** da URL da API e nome da função
+- ✅ **CI/CD automatizado** com GitHub Actions
 
-### 🏗️ Arquitetura
+## 🚀 Como Rodar Localmente
+
+### Pré-requisitos
+
+- Python 3.11+
+- Docker e Docker Compose
+- AWS CLI configurado
+- Terraform 1.5.0+
+
+### 1. Configurar Ambiente
+
+```bash
+# Clonar repositório
+git clone https://github.com/your-username/aws-lambda-container-api.git
+cd aws-lambda-container-api
+
+# Executar script de setup
+./setup.sh
+```
+
+### 2. Executar Aplicação Local
+
+```bash
+# Ativar ambiente virtual
+source venv/bin/activate
+
+# Executar Flask localmente
+python run_local.py
+```
+
+### 3. Testar Localmente
+
+```bash
+# Testar endpoint /hello
+curl http://localhost:5000/hello
+
+# Testar endpoint /echo
+curl "http://localhost:5000/echo?msg=Hello%20World"
+
+# Testar health check
+curl http://localhost:5000/health
+```
+
+### 4. Testar com Docker
+
+```bash
+# Usar Docker Compose
+docker-compose up -d
+
+# Acessar interface de teste
+open http://localhost:8000/test.html
+
+# Parar serviços
+docker-compose down
+```
+
+## ☁️ Como Subir a Infraestrutura
+
+### 1. Configurar Backend S3 (Obrigatório)
+
+```bash
+# Executar script de configuração do backend
+./scripts/setup-terraform-backend.sh
+```
+
+Este script irá:
+- Criar bucket S3 para estado do Terraform
+- Criar tabela DynamoDB para lock de estado
+- Configurar criptografia e versionamento
+- Atualizar configuração do backend
+
+### 2. Deploy da Infraestrutura
+
+```bash
+# Navegar para diretório terraform
+cd terraform
+
+# Inicializar Terraform (já feito pelo script anterior)
+terraform init
+
+# Planejar deployment
+terraform plan
+
+# Aplicar mudanças
+terraform apply
+```
+
+### 3. Build e Push da Imagem Docker
+
+```bash
+# Voltar ao diretório raiz
+cd ..
+
+# Build e push da imagem para ECR
+./build-and-push.sh
+```
+
+### 4. Verificar Deployment
+
+```bash
+# Obter URL da API dos outputs do Terraform
+cd terraform
+terraform output api_gateway_url
+
+# Testar API deployada
+curl $(terraform output -raw api_gateway_url)/hello
+curl "$(terraform output -raw api_gateway_url)/echo?msg=teste"
+```
+
+## 🧪 Como Testar a API
+
+### Endpoints Disponíveis
+
+#### `GET /hello`
+Retorna uma mensagem "Hello World" simples.
+
+```bash
+curl https://YOUR-API-ID.execute-api.us-east-1.amazonaws.com/hello
+```
+
+**Resposta:**
+```json
+{
+  "message": "Hello World",
+  "timestamp": "2025-08-07T16:34:35.830082Z",
+  "version": "1.0.0"
+}
+```
+
+#### `GET /echo?msg=<mensagem>`
+Retorna a mensagem fornecida no parâmetro `msg`.
+
+```bash
+curl "https://YOUR-API-ID.execute-api.us-east-1.amazonaws.com/echo?msg=teste"
+```
+
+**Resposta:**
+```json
+{
+  "message": "teste",
+  "echo": true,
+  "timestamp": "2025-08-07T16:34:40.176437Z"
+}
+```
+
+**Erro sem parâmetro:**
+```bash
+curl https://YOUR-API-ID.execute-api.us-east-1.amazonaws.com/echo
+```
+
+```json
+{
+  "error": "Parameter 'msg' is required",
+  "status_code": 400,
+  "timestamp": "2025-08-07T16:34:49.383925Z"
+}
+```
+
+#### `GET /health`
+Health check para monitoramento.
+
+```bash
+curl https://YOUR-API-ID.execute-api.us-east-1.amazonaws.com/health
+```
+
+**Resposta:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-08-07T16:34:44.707760Z",
+  "version": "1.0.0",
+  "environment": "dev"
+}
+```
+
+### Scripts de Teste
+
+```bash
+# Testar todos os endpoints
+./scripts/test-api.sh
+
+# Testar com diferentes cenários
+python test_api_gateway.py
+```
+
+## 🔄 CI/CD Pipeline
+
+### Como Funciona
+
+O projeto inclui um pipeline completo de CI/CD com **GitHub Actions** que é executado automaticamente em:
+
+- **Push** para branches `main` e `develop`
+- **Pull Requests** para `main` e `develop`
+
+### Stages do Pipeline
+
+1. **🧪 Test and Quality Checks**
+   - Lint do código Python (flake8, black)
+   - Testes unitários (pytest)
+   - Coverage report
+   - Security scan (bandit)
+
+2. **🐳 Build and Push Docker**
+   - Build da imagem Docker
+   - Scan de vulnerabilidades (Trivy)
+   - Push para Amazon ECR
+   - Tag com commit hash
+
+3. **🏗️ Infrastructure Deploy**
+   - Terraform validate
+   - Terraform plan
+   - Terraform apply (auto-approve em main)
+   - Update Lambda function code
+
+4. **✅ Integration Tests**
+   - Testes end-to-end na API deployada
+   - Health checks
+   - Performance tests
+
+### Configuração do CI/CD
+
+#### Secrets Necessários no GitHub
+
+```
+AWS_ACCESS_KEY_ID=your-access-key
+AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_REGION=us-east-1
+```
+
+#### Arquivo de Pipeline
+
+O pipeline está definido em `.github/workflows/ci-cd.yml` e inclui:
+
+- **Triggers**: Push e PR para main/develop
+- **Matrix Strategy**: Testes em múltiplas versões Python
+- **Caching**: Dependencies e Docker layers
+- **Artifacts**: Reports de teste e coverage
+- **Notifications**: Status do deploy
+
+### Monitoramento
+
+- **CloudWatch Dashboard**: Métricas em tempo real
+- **Alertas**: SNS notifications para erros
+- **Logs**: Structured logging em JSON
+- **Tracing**: X-Ray para debugging
+
+## 🏗️ Arquitetura da Solução
 
 ```mermaid
 graph TB
@@ -35,345 +280,185 @@ graph TB
     E --> F[API Gateway HTTP API]
     F --> G[Public HTTPS Endpoint]
     
-    H[CloudWatch Logs] --> E
-    I[CloudWatch Metrics] --> E
-    J[X-Ray Tracing] --> E
-    K[Dead Letter Queue] --> E
+    H[S3 Backend] --> D
+    I[DynamoDB Lock] --> D
+    J[CloudWatch Logs] --> E
+    K[CloudWatch Metrics] --> E
+    L[X-Ray Tracing] --> E
     
     style A fill:#f9f,stroke:#333,stroke-width:2px
     style E fill:#ff9,stroke:#333,stroke-width:2px
     style F fill:#9ff,stroke:#333,stroke-width:2px
+    style H fill:#ffa,stroke:#333,stroke-width:2px
 ```
 
-## 🚀 Quick Start
+### Componentes AWS
 
-### Pré-requisitos
+- **Lambda Function**: Container executando Flask API
+- **API Gateway**: HTTP API com integração Lambda
+- **ECR Repository**: Armazenamento de imagens Docker
+- **CloudWatch**: Logs, métricas e alertas
+- **S3**: Backend remoto para estado Terraform
+- **DynamoDB**: Lock de estado Terraform
+- **IAM**: Roles e políticas de segurança
 
-- **Python 3.11+**
-- **Docker** e Docker Compose
-- **AWS CLI** configurado com credenciais
-- **Terraform** 1.5.0+
-- **Git** para controle de versão
-
-### 🔧 Instalação Local
-
-1. **Clone o repositório**
-   ```bash
-   git clone https://github.com/your-username/aws-lambda-container-api.git
-   cd aws-lambda-container-api
-   ```
-
-2. **Configure o ambiente Python**
-   ```bash
-   # Criar ambiente virtual
-   python -m venv venv
-   
-   # Ativar ambiente virtual
-   # Windows
-   venv\Scripts\activate
-   # Linux/Mac
-   source venv/bin/activate
-   
-   # Instalar dependências
-   pip install -r requirements-dev.txt
-   ```
-
-3. **Execute a aplicação localmente**
-   ```bash
-   python run_local.py
-   ```
-
-4. **Teste os endpoints**
-   ```bash
-   # Endpoint Hello
-   curl http://localhost:5000/hello
-   
-   # Endpoint Echo
-   curl "http://localhost:5000/echo?msg=Hello%20World"
-   
-   # Endpoint Health
-   curl http://localhost:5000/health
-   ```
-
-### 🐳 Teste com Docker
-
-#### Opção 1: Container Individual
+## 📊 Outputs do Terraform
 
 ```bash
-# Build da imagem Docker
-docker build -t lambda-container-api .
+# Obter todos os outputs
+terraform output
 
-# Execute o container localmente
-docker run -p 9000:8080 lambda-container-api
-
-# Teste via curl
-curl -XPOST "http://localhost:9000/2015-03-31/functions/function/invocations" \
-     -d '{"httpMethod":"GET","path":"/hello","queryStringParameters":null}'
+# Outputs principais:
+api_gateway_url = "https://4zohzp4tpl.execute-api.us-east-1.amazonaws.com"
+lambda_function_name = "lambda-container-api-dev"
+ecr_repository_url = "148761658767.dkr.ecr.us-east-1.amazonaws.com/lambda-container-api-dev"
 ```
 
-#### Opção 2: Docker Compose (Recomendado)
+## 🧹 Limpeza de Recursos
+
+⚠️ **IMPORTANTE**: Para evitar custos, sempre execute o destroy após os testes:
 
 ```bash
-# Usando Make (recomendado)
-make test
-
-# Ou usando Docker Compose diretamente
-docker-compose up -d
-
-# Acesse a interface de teste
-open http://localhost:8000/test.html
-```
-
-### ☁️ Deploy na AWS
-
-#### 1. Configurar Credenciais AWS
-
-```bash
-aws configure
-# ou
-export AWS_PROFILE=your-profile
-```
-
-#### 2. Deploy da Infraestrutura
-
-```bash
-# Navegar para o diretório terraform
+# Destruir infraestrutura
 cd terraform
+terraform destroy
 
-# Inicializar Terraform
-terraform init
+# Limpar imagens ECR (opcional)
+aws ecr delete-repository --repository-name lambda-container-api-dev --force
 
-# Planejar deployment
-terraform plan
-
-# Aplicar mudanças
-terraform apply
+# Limpar backend S3 (opcional - cuidado com outros projetos)
+# aws s3 rb s3://terraform-state-lambda-container-api-TIMESTAMP --force
+# aws dynamodb delete-table --table-name terraform-state-lock
 ```
 
-#### 3. Build e Push da Imagem
-
-```bash
-# Voltar ao diretório raiz
-cd ..
-
-# Build e push da imagem Docker
-./build-and-push.sh
-```
-
-## 📚 Endpoints da API
-
-### `GET /hello`
-
-Retorna uma mensagem "Hello World" simples.
-
-**Resposta de Sucesso (200)**
-```json
-{
-  "message": "Hello World",
-  "timestamp": "2025-08-07T16:34:35.830082Z",
-  "version": "1.0.0"
-}
-```
-
-### `GET /echo`
-
-Retorna a mensagem fornecida no parâmetro `msg`.
-
-**Parâmetros**
-- `msg` (string, obrigatório): Mensagem para ecoar
-
-**Resposta de Sucesso (200)**
-```json
-{
-  "message": "sua_mensagem_aqui",
-  "echo": true,
-  "timestamp": "2025-08-07T16:34:40.176437Z"
-}
-```
-
-**Resposta de Erro (400)**
-```json
-{
-  "error": "Parameter 'msg' is required",
-  "status_code": 400,
-  "timestamp": "2025-08-07T16:34:49.383925Z"
-}
-```
-
-### `GET /health`
-
-Endpoint de health check para monitoramento.
-
-**Resposta de Sucesso (200)**
-```json
-{
-  "status": "healthy",
-  "timestamp": "2025-08-07T16:34:44.707760Z",
-  "version": "1.0.0",
-  "environment": "dev"
-}
-```
-
-## 🧪 Executando Testes
-
-```bash
-# Executar todos os testes
-pytest
-
-# Executar com coverage
-pytest --cov=src --cov-report=html --cov-report=term-missing
-
-# Executar apenas testes unitários
-pytest tests/unit/
-
-# Executar apenas testes de integração
-pytest tests/integration/
-
-# Executar com script de teste completo
-python run_tests.py
-```
-
-### 📊 Coverage Report
-
-Os relatórios de coverage são gerados em:
-- **HTML**: `htmlcov/index.html`
-- **Terminal**: Output detalhado com linhas não cobertas
-- **XML**: `coverage.xml` para integração CI/CD
-
-## 🏗️ Estrutura do Projeto
-
-```
-aws-lambda-container-api/
-├── .github/
-│   └── workflows/
-│       └── ci-cd.yml           # Pipeline CI/CD
-├── src/
-│   ├── app.py                  # Aplicação Flask principal
-│   ├── lambda_function.py      # Handler AWS Lambda
-│   └── requirements.txt        # Dependências Python
-├── terraform/
-│   ├── main.tf                 # Recursos principais
-│   ├── variables.tf            # Variáveis de entrada
-│   ├── outputs.tf              # Outputs da infraestrutura
-│   └── versions.tf             # Versões dos providers
-├── tests/
-│   ├── unit/                   # Testes unitários
-│   ├── integration/            # Testes de integração
-│   └── conftest.py             # Configuração dos testes
-├── docs/                       # Documentação adicional
-├── Dockerfile                  # Configuração do container Lambda
-├── docker-compose.yml          # Orquestração de serviços
-├── Makefile                    # Comandos automatizados
-├── build-and-push.sh          # Script de build e deploy
-├── requirements-dev.txt        # Dependências de desenvolvimento
-└── README.md                  # Esta documentação
-```
-
-## 🔧 Configuração de Desenvolvimento
-
-### Variáveis de Ambiente
-
-```bash
-# Configurações da aplicação
-export LOG_LEVEL=INFO
-export ENVIRONMENT=development
-export API_VERSION=1.0.0
-
-# Configurações AWS
-export AWS_REGION=us-east-1
-export AWS_PROFILE=default
-```
-
-### Comandos Make Úteis
-
-```bash
-make help          # Ver todos os comandos disponíveis
-make build         # Construir imagens
-make run           # Iniciar serviços
-make test          # Iniciar e tentar abrir no browser
-make stop          # Parar serviços
-make logs          # Ver logs
-make clean         # Limpar recursos
-```
-
-## 📊 Métricas e Performance
-
-### Métricas de Performance
+## 📈 Métricas de Performance
 
 - **Cold Start**: ~2.3 segundos (primeira execução)
 - **Warm Executions**: ~1.5-3.6ms (execuções subsequentes)
 - **Memory Usage**: ~62MB (de 512MB alocados)
-- **Coverage de Testes**: >85%
-- **Tamanho da Imagem**: ~1.04GB (otimizada para Lambda)
+- **Image Size**: ~1.04GB (otimizada para Lambda)
+- **Test Coverage**: >85%
 
-### Monitoramento
+## 🛠️ Estrutura do Projeto
 
-- **CloudWatch Dashboard**: Métricas em tempo real
-- **X-Ray Tracing**: Rastreamento de requests
-- **Structured Logging**: Logs estruturados em JSON
-- **Alertas**: Notificações via SNS para erros e performance
+```
+aws-lambda-container-api/
+├── .github/workflows/ci-cd.yml    # Pipeline CI/CD
+├── src/
+│   ├── app.py                     # Flask API
+│   ├── lambda_function.py         # Lambda handler
+│   └── requirements.txt           # Dependencies
+├── terraform/
+│   ├── main.tf                    # Infrastructure
+│   ├── backend.tf                 # S3 backend config
+│   ├── variables.tf               # Variables
+│   └── outputs.tf                 # Outputs
+├── scripts/
+│   ├── setup-terraform-backend.sh # Backend setup
+│   └── test-api.sh                # API testing
+├── Dockerfile                     # Container config
+├── docker-compose.yml             # Local development
+├── build-and-push.sh             # Build script
+└── README.md                     # This file
+```
 
-## 🔒 Segurança
+## 🔧 Troubleshooting
 
-- **Scanning de Vulnerabilidades**: Análise automática de dependências
-- **IAM Roles**: Princípio do menor privilégio
-- **VPC**: Isolamento de rede (opcional)
-- **Encryption**: Dados em trânsito e em repouso
-- **CORS**: Configuração adequada para APIs
+### Problemas Comuns
 
-## 🚀 CI/CD Pipeline
+#### 1. Erro no Backend S3
+```bash
+# Reconfigurar backend
+./scripts/setup-terraform-backend.sh
+cd terraform
+terraform init -reconfigure
+```
 
-O projeto inclui um pipeline completo de CI/CD com GitHub Actions:
+#### 2. Erro no Build Docker
+```bash
+# Limpar cache Docker
+docker system prune -a
+./build-and-push.sh --no-cache
+```
 
-- **Build**: Construção e teste da aplicação
-- **Security**: Scanning de vulnerabilidades
-- **Test**: Execução de testes unitários e integração
-- **Deploy**: Deploy automatizado na AWS
-- **Monitoring**: Verificação de health checks
+#### 3. Lambda não atualiza
+```bash
+# Forçar update da função
+aws lambda update-function-code \
+  --function-name lambda-container-api-dev \
+  --image-uri $(terraform output -raw ecr_repository_url):latest
+```
 
-## 🤝 Contribuindo
+#### 4. API Gateway 500 Error
+```bash
+# Verificar logs CloudWatch
+aws logs tail /aws/lambda/lambda-container-api-dev --follow
+```
 
-1. **Fork** o repositório
-2. **Crie** uma branch para sua feature (`git checkout -b feature/nova-funcionalidade`)
-3. **Commit** suas mudanças (`git commit -am 'Adiciona nova funcionalidade'`)
-4. **Push** para a branch (`git push origin feature/nova-funcionalidade`)
-5. **Abra** um Pull Request
+### Logs e Debugging
 
-### Padrões de Código
+```bash
+# Logs da Lambda
+aws logs tail /aws/lambda/lambda-container-api-dev --follow
 
-- Seguir **PEP 8** para Python
-- Usar **Black** para formatação automática
-- Manter **coverage >85%** nos testes
-- Documentar funções públicas com **docstrings**
-- Usar **type hints** quando apropriado
+# Logs do API Gateway
+aws logs tail /aws/apigateway/lambda-container-api-dev-api --follow
 
-## 📄 Licença
+# Métricas CloudWatch
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/Lambda \
+  --metric-name Invocations \
+  --dimensions Name=FunctionName,Value=lambda-container-api-dev \
+  --start-time 2025-08-07T00:00:00Z \
+  --end-time 2025-08-07T23:59:59Z \
+  --period 3600 \
+  --statistics Sum
+```
 
-Este projeto está licenciado sob a MIT License - veja o arquivo [LICENSE](LICENSE) para detalhes.
+## 🎯 Considerações do Teste
 
-## 🆘 Suporte e Documentação
+### O que foi implementado com sucesso:
 
-- **Documentação Técnica**: Veja os arquivos em `docs/` para especificações detalhadas
-- **Issues**: Use o GitHub Issues para reportar bugs
-- **Discussões**: Use GitHub Discussions para perguntas gerais
-- **Wiki**: Documentação adicional no GitHub Wiki
+✅ **API funcional**: Flask com rotas `/hello` e `/echo` exatamente como especificado  
+✅ **Container Docker**: Otimizado para AWS Lambda  
+✅ **ECR Integration**: Build e push automatizado  
+✅ **Terraform IaC**: Infraestrutura completa como código  
+✅ **Backend S3**: Estado remoto com lock DynamoDB  
+✅ **API Gateway**: HTTP API integrado à Lambda  
+✅ **Outputs**: URL da API e nome da função  
+✅ **CI/CD**: Pipeline completo com GitHub Actions  
+✅ **Monitoramento**: CloudWatch, X-Ray, alertas  
+✅ **Segurança**: IAM roles, scanning, encryption  
+✅ **Documentação**: README completo com instruções  
 
-### Links Úteis
+### Extras implementados:
 
-- [AWS Lambda Documentation](https://docs.aws.amazon.com/lambda/)
-- [Terraform AWS Provider](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
-- [Docker for AWS Lambda](https://docs.aws.amazon.com/lambda/latest/dg/images-create.html)
-- [GitHub Actions](https://docs.github.com/en/actions)
+🚀 **Health Check**: Endpoint adicional para monitoramento  
+🚀 **Structured Logging**: Logs em JSON para melhor observabilidade  
+🚀 **Performance Optimization**: Cold start otimizado  
+🚀 **Security Scanning**: Vulnerabilidades em código e containers  
+🚀 **Test Coverage**: Suite completa de testes  
+🚀 **Pre-commit Hooks**: Qualidade de código automatizada  
+🚀 **Multi-environment**: Configuração para dev/staging/prod  
 
-## 🏆 Reconhecimentos
+### Desafios enfrentados e soluções:
 
-- AWS Lambda team pela excelente plataforma serverless
-- Terraform team pela ferramenta de IaC
-- Flask team pelo framework web simples e poderoso
-- Comunidade open source pelas ferramentas e bibliotecas
+1. **Lambda Container Runtime**: Inicialmente havia erro com `AWS_LAMBDA_EXEC_WRAPPER`, resolvido removendo a variável desnecessária.
+
+2. **API Gateway Integration**: Precisou ajustar o handler Lambda para processar corretamente eventos do API Gateway.
+
+3. **Terraform Backend**: Implementado script automatizado para configurar S3 backend com segurança.
+
+4. **CI/CD Permissions**: Configurado IAM roles com permissões mínimas necessárias.
+
+## 📞 Suporte
+
+- **Issues**: Para bugs e problemas
+- **Discussions**: Para perguntas e sugestões
+- **Documentation**: Arquivos em `docs/` para detalhes técnicos
 
 ---
 
-**Desenvolvido com ❤️ usando AWS Lambda, Docker, Terraform e GitHub Actions**
+**Desenvolvido com ❤️ para o teste técnico AWS + Terraform**
 
-⭐ Se este projeto foi útil para você, considere dar uma estrela no GitHub!
+⭐ **Resultado**: API funcionando em produção com infraestrutura automatizada!

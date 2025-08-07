@@ -1,16 +1,35 @@
-# Example Terraform variables file
-# Copy this file to terraform.tfvars and update with your values
+# Exemplo de arquivo terraform.tfvars
+# Copie este arquivo para terraform.tfvars e ajuste os valores
 
+# Nome do projeto
 project_name = "lambda-container-api"
-environment  = "dev"
-aws_region   = "us-east-1"
 
-# Lambda configuration
+# Ambiente (dev, staging, prod)
+environment = "dev"
+
+# Região AWS
+aws_region = "us-east-1"
+
+# Tag da imagem ECR
+ecr_image_tag = "latest"
+
+# Configurações da Lambda
 lambda_memory_size = 512
-lambda_timeout     = 30
-ecr_image_tag      = "latest"
+lambda_timeout = 30
+lambda_reserved_concurrency = -1
+lambda_architecture = "x86_64"
 
-# CORS configuration for development
+# Dead Letter Queue
+lambda_dead_letter_queue_enabled = true
+
+# Provisioned Concurrency (opcional)
+# lambda_provisioned_concurrency = 5
+
+# Configurações do API Gateway
 api_cors_allow_origins = ["*"]
-api_cors_allow_methods = ["GET", "POST", "OPTIONS"]
-api_cors_allow_headers = ["Content-Type", "X-Amz-Date", "Authorization", "X-Api-Key"]
+api_cors_allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+api_cors_allow_headers = ["Content-Type", "Authorization", "X-Amz-Date", "X-Api-Key", "X-Amz-Security-Token"]
+
+# Throttling do API Gateway
+api_throttle_burst_limit = 5000
+api_throttle_rate_limit = 2000
