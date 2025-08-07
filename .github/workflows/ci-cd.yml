@@ -590,13 +590,7 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           
           echo "**Endpoint Performance:**" >> $GITHUB_STEP_SUMMARY
-          python3 -c "
-import json
-data = json.load(open('performance-results.json'))
-for endpoint, results in data['endpoint_results'].items():
-    analysis = results['analysis']
-    print(f'- **{analysis[\"endpoint\"]}**: {analysis[\"success_rate\"]:.1f}% success, {analysis[\"response_times\"][\"avg_ms\"]:.1f}ms avg')
-" >> $GITHUB_STEP_SUMMARY
+          python3 -c "import json; data=json.load(open('performance-results.json')); [print(f'- **{results[\"analysis\"][\"endpoint\"]}**: {results[\"analysis\"][\"success_rate\"]:.1f}% success, {results[\"analysis\"][\"response_times\"][\"avg_ms\"]:.1f}ms avg') for endpoint, results in data['endpoint_results'].items()]" >> $GITHUB_STEP_SUMMARY
           
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📊 Detailed results available in artifacts" >> $GITHUB_STEP_SUMMARY
