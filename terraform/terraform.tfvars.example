@@ -1,0 +1,16 @@
+# Example Terraform variables file
+# Copy this file to terraform.tfvars and update with your values
+
+project_name = "lambda-container-api"
+environment  = "dev"
+aws_region   = "us-east-1"
+
+# Lambda configuration
+lambda_memory_size = 512
+lambda_timeout     = 30
+ecr_image_tag      = "latest"
+
+# CORS configuration for development
+api_cors_allow_origins = ["*"]
+api_cors_allow_methods = ["GET", "POST", "OPTIONS"]
+api_cors_allow_headers = ["Content-Type", "X-Amz-Date", "Authorization", "X-Api-Key"]

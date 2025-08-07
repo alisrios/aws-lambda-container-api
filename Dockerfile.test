@@ -1,0 +1,16 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Instalar curl para healthcheck
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Copiar servidor de teste
+COPY server.py .
+COPY test.html .
+
+# Expor porta
+EXPOSE 8000
+
+# Comando para iniciar o servidor
+CMD ["python", "server.py"]

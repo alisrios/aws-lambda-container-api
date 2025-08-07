@@ -1,0 +1,31 @@
+services:
+  lambda-api:
+    build: .
+    ports:
+      - "9000:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/2015-03-31/functions/function/invocations"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - lambda-network
+
+  test-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    ports:
+      - "8000:8000"
+    depends_on:
+      lambda-api:
+        condition: service_healthy
+    volumes:
+      - ./test.html:/app/test.html:ro
+    networks:
+      - lambda-network
+
+networks:
+  lambda-network:
+    driver: bridge

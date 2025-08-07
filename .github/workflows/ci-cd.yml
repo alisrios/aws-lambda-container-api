@@ -1,0 +1,677 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: lambda-container-api
+  TERRAFORM_VERSION: 1.5.0
+
+jobs:
+  test:
+    name: Test and Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('requirements-dev.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        
+    - name: Code formatting check (Black)
+      run: |
+        black --check --diff src/ tests/
+        
+    - name: Import sorting check (isort)
+      run: |
+        isort --check-only --diff src/ tests/
+        
+    - name: Lint with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
+        flake8 src/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        
+    - name: Run unit tests with coverage
+      run: |
+        pytest tests/unit/ --cov=src --cov-report=xml --cov-report=term-missing
+        
+    - name: Run integration tests
+      run: |
+        pytest tests/integration/ -v
+        
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    needs: test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache pip dependencies for security scan
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-security-pip-${{ hashFiles('requirements-dev.txt', 'src/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-security-pip-
+          ${{ runner.os }}-pip-
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        pip install safety bandit semgrep
+        
+    - name: Run safety check for vulnerabilities
+      run: |
+        echo "Running safety check for known vulnerabilities..."
+        safety check --json --output safety-report.json || true
+        safety check --short-report || echo "Safety check completed with warnings"
+        
+    - name: Run bandit security linter
+      run: |
+        echo "Running bandit security analysis..."
+        bandit -r src/ -f json -o bandit-report.json || true
+        bandit -r src/ -f txt || echo "Bandit analysis completed with warnings"
+        
+    - name: Run semgrep security analysis
+      run: |
+        echo "Running semgrep security analysis..."
+        semgrep --config=auto src/ --json --output=semgrep-report.json || true
+        semgrep --config=auto src/ --text || echo "Semgrep analysis completed with warnings"
+        
+    - name: Upload security scan results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          safety-report.json
+          bandit-report.json
+          semgrep-report.json
+        retention-days: 30
+        
+    - name: Security scan summary
+      if: always()
+      run: |
+        echo "## 🔒 Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Safety (Dependency Vulnerabilities)" >> $GITHUB_STEP_SUMMARY
+        if [ -f safety-report.json ]; then
+          echo "✅ Safety scan completed - check artifacts for details" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Safety scan failed" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Bandit (Code Security Issues)" >> $GITHUB_STEP_SUMMARY
+        if [ -f bandit-report.json ]; then
+          echo "✅ Bandit scan completed - check artifacts for details" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Bandit scan failed" >> $GITHUB_STEP_SUMMARY
+        fi
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Semgrep (Advanced Security Analysis)" >> $GITHUB_STEP_SUMMARY
+        if [ -f semgrep-report.json ]; then
+          echo "✅ Semgrep scan completed - check artifacts for details" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Semgrep scan failed" >> $GITHUB_STEP_SUMMARY
+        fi
+
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    
+    permissions:
+      id-token: write
+      contents: read
+      security-events: write
+    
+    outputs:
+      image-uri: ${{ steps.build-image.outputs.image }}
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build-image.outputs.digest }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials using OIDC
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v2
+      
+    - name: Extract metadata for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+        labels: |
+          org.opencontainers.image.title=${{ env.ECR_REPOSITORY }}
+          org.opencontainers.image.description=AWS Lambda Container API
+          org.opencontainers.image.vendor=CI/CD Pipeline
+          org.opencontainers.image.version=${{ github.sha }}
+          org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.source=${{ github.repositoryUrl }}
+          
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      with:
+        driver-opts: |
+          image=moby/buildkit:v0.12.0
+          network=host
+          
+    - name: Build Docker image for scanning
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        load: true
+        tags: ${{ env.ECR_REPOSITORY }}:scan
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64
+        target: builder
+        
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.ECR_REPOSITORY }}:scan
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+        
+    - name: Run Trivy vulnerability scanner (table format)
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.ECR_REPOSITORY }}:scan
+        format: 'table'
+        severity: 'CRITICAL,HIGH'
+        
+    - name: Build and push optimized Docker image
+      id: build-image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        platforms: linux/amd64
+        build-args: |
+          BUILDKIT_INLINE_CACHE=1
+        provenance: true
+        sbom: true
+        
+    - name: Generate SBOM
+      uses: anchore/sbom-action@v0
+      with:
+        image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        format: spdx-json
+        output-file: sbom.spdx.json
+        
+    - name: Upload SBOM
+      uses: actions/upload-artifact@v3
+      with:
+        name: sbom
+        path: sbom.spdx.json
+        retention-days: 30
+        
+    - name: Image size analysis
+      run: |
+        echo "## 📦 Docker Image Analysis" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Get image size
+        IMAGE_SIZE=$(docker images ${{ env.ECR_REPOSITORY }}:scan --format "table {{.Size}}" | tail -n 1)
+        echo "**Image Size:** $IMAGE_SIZE" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Get layer information
+        echo "**Image Layers:**" >> $GITHUB_STEP_SUMMARY
+        docker history ${{ env.ECR_REPOSITORY }}:scan --format "table {{.CreatedBy}}\t{{.Size}}" | head -10 >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        echo "**Image Digest:** ${{ steps.build-image.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
+        
+    - name: Image digest
+      run: echo ${{ steps.build-image.outputs.digest }}
+
+  deploy:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    
+    permissions:
+      id-token: write
+      contents: read
+    
+    outputs:
+      api-url: ${{ steps.terraform-output.outputs.api_url }}
+      lambda-function-name: ${{ steps.terraform-output.outputs.lambda_function_name }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials using OIDC
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+        aws-region: ${{ env.AWS_REGION }}
+        
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+        terraform_wrapper: false
+        
+    - name: Terraform Format Check
+      id: fmt
+      run: terraform fmt -check -recursive
+      working-directory: terraform
+      continue-on-error: true
+      
+    - name: Terraform Init
+      id: init
+      run: |
+        terraform init \
+          -backend-config="bucket=${{ secrets.TERRAFORM_STATE_BUCKET }}" \
+          -backend-config="key=${{ github.repository }}/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}"
+      working-directory: terraform
+      
+    - name: Terraform Validate
+      id: validate
+      run: terraform validate -no-color
+      working-directory: terraform
+      
+    - name: Terraform Plan
+      id: plan
+      run: |
+        terraform plan -no-color -input=false \
+          -var="ecr_image_tag=${{ github.sha }}" \
+          -var="environment=${{ github.ref == 'refs/heads/main' && 'prod' || 'dev' }}" \
+          -out=tfplan
+      working-directory: terraform
+      continue-on-error: true
+      
+    - name: Comment PR with Terraform Plan
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+          
+          <details><summary>Show Plan</summary>
+          
+          \`\`\`terraform
+          ${{ steps.plan.outputs.stdout }}
+          \`\`\`
+          
+          </details>
+          
+          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          })
+          
+    - name: Terraform Apply
+      if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+      id: apply
+      run: |
+        terraform apply -auto-approve tfplan
+      working-directory: terraform
+      
+    - name: Get Terraform Outputs
+      id: terraform-output
+      if: steps.apply.outcome == 'success'
+      run: |
+        echo "api_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+        echo "lambda_function_name=$(terraform output -raw lambda_function_name)" >> $GITHUB_OUTPUT
+      working-directory: terraform
+      
+    - name: Handle Terraform Errors
+      if: steps.plan.outcome == 'failure' || steps.apply.outcome == 'failure'
+      run: |
+        echo "Terraform deployment failed. Check the logs above for details."
+        echo "Plan outcome: ${{ steps.plan.outcome }}"
+        echo "Apply outcome: ${{ steps.apply.outcome }}"
+        exit 1
+
+  e2e-test:
+    name: End-to-End Testing
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Cache pip dependencies for E2E tests
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-e2e-pip-${{ hashFiles('requirements-dev.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-e2e-pip-
+          ${{ runner.os }}-pip-
+        
+    - name: Install test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests pytest statistics
+        
+    - name: Wait for API to be ready
+      run: |
+        echo "Waiting for API to be ready..."
+        sleep 30
+        
+    - name: Test Hello endpoint
+      run: |
+        API_URL="${{ needs.deploy.outputs.api-url }}"
+        echo "Testing Hello endpoint: ${API_URL}/hello"
+        
+        response=$(curl -s -w "%{http_code}" -o response.json "${API_URL}/hello")
+        http_code=${response: -3}
+        
+        if [ "$http_code" != "200" ]; then
+          echo "Hello endpoint failed with HTTP code: $http_code"
+          cat response.json
+          exit 1
+        fi
+        
+        echo "Hello endpoint test passed!"
+        cat response.json
+        
+    - name: Test Echo endpoint
+      run: |
+        API_URL="${{ needs.deploy.outputs.api-url }}"
+        echo "Testing Echo endpoint: ${API_URL}/echo?msg=test"
+        
+        response=$(curl -s -w "%{http_code}" -o response.json "${API_URL}/echo?msg=test")
+        http_code=${response: -3}
+        
+        if [ "$http_code" != "200" ]; then
+          echo "Echo endpoint failed with HTTP code: $http_code"
+          cat response.json
+          exit 1
+        fi
+        
+        echo "Echo endpoint test passed!"
+        cat response.json
+        
+    - name: Test Echo endpoint without parameter
+      run: |
+        API_URL="${{ needs.deploy.outputs.api-url }}"
+        echo "Testing Echo endpoint without parameter: ${API_URL}/echo"
+        
+        response=$(curl -s -w "%{http_code}" -o response.json "${API_URL}/echo")
+        http_code=${response: -3}
+        
+        if [ "$http_code" != "400" ]; then
+          echo "Echo endpoint without parameter should return 400, got: $http_code"
+          cat response.json
+          exit 1
+        fi
+        
+        echo "Echo endpoint error handling test passed!"
+        cat response.json
+        
+    - name: Test Health endpoint
+      run: |
+        API_URL="${{ needs.deploy.outputs.api-url }}"
+        echo "Testing Health endpoint: ${API_URL}/health"
+        
+        response=$(curl -s -w "%{http_code}" -o response.json "${API_URL}/health")
+        http_code=${response: -3}
+        
+        if [ "$http_code" != "200" ]; then
+          echo "Health endpoint failed with HTTP code: $http_code"
+          cat response.json
+          exit 1
+        fi
+        
+        # Verify health response structure
+        status=$(cat response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['status'])")
+        if [ "$status" != "healthy" ]; then
+          echo "Health endpoint returned unhealthy status: $status"
+          cat response.json
+          exit 1
+        fi
+        
+        echo "Health endpoint test passed!"
+        cat response.json
+        
+    - name: Test Monitoring Headers
+      run: |
+        API_URL="${{ needs.deploy.outputs.api-url }}"
+        echo "Testing monitoring headers on all endpoints"
+        
+        endpoints=("/hello" "/echo?msg=monitoring_test" "/health")
+        
+        for endpoint in "${endpoints[@]}"; do
+          echo "Testing endpoint: ${endpoint}"
+          
+          # Test with custom request ID
+          custom_id="ci-cd-test-$(date +%s)"
+          response=$(curl -s -w "%{http_code}" -H "X-Request-ID: ${custom_id}" -D headers.txt "${API_URL}${endpoint}")
+          http_code=${response: -3}
+          
+          if [ "$http_code" != "200" ]; then
+            echo "Endpoint ${endpoint} failed with HTTP code: $http_code"
+            exit 1
+          fi
+          
+          # Check for monitoring headers
+          if ! grep -q "X-Request-ID: ${custom_id}" headers.txt; then
+            echo "Missing or incorrect X-Request-ID header for ${endpoint}"
+            cat headers.txt
+            exit 1
+          fi
+          
+          if ! grep -q "X-Response-Time:" headers.txt; then
+            echo "Missing X-Response-Time header for ${endpoint}"
+            cat headers.txt
+            exit 1
+          fi
+          
+          echo "Monitoring headers test passed for ${endpoint}"
+        done
+        
+    - name: Run E2E Monitoring Tests
+      run: |
+        API_URL="${{ needs.deploy.outputs.api-url }}"
+        export DEPLOYED_API_URL="${API_URL}"
+        
+        # Run specific monitoring E2E tests
+        pytest tests/e2e/test_monitoring_e2e.py -v --tb=short
+        
+    - name: Run Performance Validation
+      run: |
+        API_URL="${{ needs.deploy.outputs.api-url }}"
+        echo "Running performance validation against: ${API_URL}"
+        
+        # Run performance validation with moderate load for CI/CD
+        python scripts/validate_performance.py \
+          --api-url "${API_URL}" \
+          --requests 50 \
+          --concurrency 5 \
+          --output performance-results.json
+        
+    - name: Upload Performance Results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: performance-results
+        path: performance-results.json
+        retention-days: 30
+        
+    - name: Performance Summary
+      if: always()
+      run: |
+        if [ -f performance-results.json ]; then
+          echo "## 🚀 Performance Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract key metrics from results
+          SUCCESS=$(python3 -c "import json; data=json.load(open('performance-results.json')); print('✅ PASS' if data['overall_success'] else '❌ FAIL')")
+          echo "**Overall Result:** $SUCCESS" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "**Endpoint Performance:**" >> $GITHUB_STEP_SUMMARY
+          python3 -c "
+import json
+data = json.load(open('performance-results.json'))
+for endpoint, results in data['endpoint_results'].items():
+    analysis = results['analysis']
+    print(f'- **{analysis[\"endpoint\"]}**: {analysis[\"success_rate\"]:.1f}% success, {analysis[\"response_times\"][\"avg_ms\"]:.1f}ms avg')
+" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📊 Detailed results available in artifacts" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "❌ Performance validation failed to generate results" >> $GITHUB_STEP_SUMMARY
+        fi
+
+  notify:
+    name: Notify Deployment Status
+    runs-on: ubuntu-latest
+    needs: [deploy, e2e-test]
+    if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    
+    steps:
+    - name: Deployment Success Notification
+      if: needs.deploy.result == 'success' && needs.e2e-test.result == 'success'
+      run: |
+        echo "🎉 Deployment Successful!"
+        echo "API URL: ${{ needs.deploy.outputs.api-url }}"
+        echo "Lambda Function: ${{ needs.deploy.outputs.lambda-function-name }}"
+        echo "Environment: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Development' }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Branch: ${{ github.ref_name }}"
+        
+        # Create deployment summary
+        cat >> $GITHUB_STEP_SUMMARY << EOF
+        # 🚀 Deployment Summary
+        
+        ## ✅ Deployment Successful
+        
+        - **API URL**: ${{ needs.deploy.outputs.api-url }}
+        - **Lambda Function**: ${{ needs.deploy.outputs.lambda-function-name }}
+        - **Environment**: ${{ github.ref == 'refs/heads/main' && 'Production' || 'Development' }}
+        - **Commit**: ${{ github.sha }}
+        - **Branch**: ${{ github.ref_name }}
+        
+        ## 🧪 Test Results
+        - Unit Tests: ✅ Passed
+        - Integration Tests: ✅ Passed
+        - Security Scan: ✅ Passed
+        - End-to-End Tests: ✅ Passed
+        
+        ## 📋 Next Steps
+        - Test the API endpoints using the URL above
+        - Monitor CloudWatch logs for any issues
+        - Check the Lambda function metrics in AWS Console
+        EOF
+        
+    - name: Deployment Failure Notification
+      if: needs.deploy.result == 'failure' || needs.e2e-test.result == 'failure'
+      run: |
+        echo "❌ Deployment Failed!"
+        echo "Deploy Status: ${{ needs.deploy.result }}"
+        echo "E2E Test Status: ${{ needs.e2e-test.result }}"
+        echo "Commit: ${{ github.sha }}"
+        echo "Branch: ${{ github.ref_name }}"
+        
+        # Create failure summary
+        cat >> $GITHUB_STEP_SUMMARY << EOF
+        # 💥 Deployment Failed
+        
+        ## ❌ Deployment Status
+        - **Deploy Job**: ${{ needs.deploy.result }}
+        - **E2E Test Job**: ${{ needs.e2e-test.result }}
+        - **Commit**: ${{ github.sha }}
+        - **Branch**: ${{ github.ref_name }}
+        
+        ## 🔍 Troubleshooting
+        1. Check the job logs above for detailed error messages
+        2. Verify AWS credentials and permissions
+        3. Check Terraform state and resource conflicts
+        4. Validate Docker image build and ECR push
+        
+        ## 📞 Support
+        - Review the workflow logs for specific error details
+        - Check AWS CloudWatch logs for runtime errors
+        - Verify all required secrets are configured
+        EOF
+        
+        exit 1

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste AWS Lambda API</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .response {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Teste AWS Lambda API</h1>
+        
+        <form id="testForm">
+            <div class="form-group">
+                <label for="method">Método HTTP:</label>
+                <select id="method">
+                    <option value="GET">GET</option>
+                    <option value="POST">POST</option>
+                    <option value="PUT">PUT</option>
+                    <option value="DELETE">DELETE</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="path">Path:</label>
+                <input type="text" id="path" value="/hello" placeholder="/hello">
+            </div>
+            
+            <div class="form-group">
+                <label for="body">Body (JSON):</label>
+                <textarea id="body" rows="4" placeholder='{"key": "value"}'></textarea>
+            </div>
+            
+            <button type="submit">🧪 Testar API</button>
+        </form>
+        
+        <div id="response" class="response" style="display: none;"></div>
+    </div>
+
+    <script>
+        document.getElementById('testForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const method = document.getElementById('method').value;
+            const path = document.getElementById('path').value;
+            const bodyText = document.getElementById('body').value;
+            const responseDiv = document.getElementById('response');
+            
+            // Preparar payload para Lambda
+            const payload = {
+                httpMethod: method,
+                path: path,
+                queryStringParameters: null,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            };
+            
+            if (bodyText.trim()) {
+                try {
+                    payload.body = JSON.stringify(JSON.parse(bodyText));
+                } catch (e) {
+                    payload.body = bodyText;
+                }
+            }
+            
+            try {
+                responseDiv.style.display = 'block';
+                responseDiv.className = 'response';
+                responseDiv.textContent = 'Enviando requisição...';
+                
+                const response = await fetch('http://localhost:8000/api/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.text();
+                
+                if (response.ok) {
+                    responseDiv.className = 'response success';
+                    responseDiv.textContent = `✅ Sucesso!\n\nStatus: ${response.status}\n\nResposta:\n${result}`;
+                } else {
+                    responseDiv.className = 'response error';
+                    responseDiv.textContent = `❌ Erro!\n\nStatus: ${response.status}\n\nResposta:\n${result}`;
+                }
+            } catch (error) {
+                responseDiv.className = 'response error';
+                responseDiv.textContent = `❌ Erro de conexão!\n\n${error.message}\n\nVerifique se o container está rodando:\ndocker ps`;
+            }
+        });
+    </script>
+</body>
+</html>

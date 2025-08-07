@@ -1,0 +1,17 @@
+# Flask application dependencies
+Flask==2.3.3
+Werkzeug==2.3.7
+
+# AWS Lambda runtime interface (for local testing)
+awslambdaric==2.0.7
+
+# Logging and utilities
+python-json-logger==2.0.7
+psutil==5.9.6
+
+# Development and testing dependencies
+pytest==7.4.2
+pytest-cov==4.1.0
+pytest-xdist==3.3.1
+requests==2.31.0
+coverage==7.3.2
