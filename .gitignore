@@ -248,16 +248,6 @@ aws-exports.js
 # Docker
 .dockerignore
 
-# Local development files
-run_local.py
-test_*.py
-*_test.py
-test_implementation.py
-validate_dockerfile.py
-test_container.py
-test_lambda.ps1
-test_lambda_import.py
-
 # Logs
 *.log
 logs/
@@ -317,12 +307,6 @@ config.local.json
 *.p12
 *.pfx
 
-# Local scripts and utilities
-scripts/local_*
-scripts/dev_*
-local_*
-dev_*
-
 # Node.js (if you add any JS tooling later)
 node_modules/
 npm-debug.log*
@@ -368,5 +352,30 @@ site/
 *.pkg
 *.dmg
 
-# Application specific
-# Add any specific files your application generates that shouldn't be committed
+# Application specific files that shouldn't be in GitHub
+response.json
+terraform.tfstate
+terraform.tfstate.backup
+
+# Local development and testing files
+test_api_gateway.ps1
+test_api_gateway.py
+test_container.py
+test_implementation.py
+test_lambda.ps1
+test_lambda_import.py
+test_simple.py
+validate_dockerfile.py
+run_local.py
+server.py
+test.html
+
+# Kiro directory (appears to be local tooling)
+.kiro/
+
+# Local scripts
+scripts/fix-lambda-image.ps1
+scripts/fix-lambda-image.sh
+
+# Temporary response files
+*.response.json

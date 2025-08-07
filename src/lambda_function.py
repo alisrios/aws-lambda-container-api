@@ -47,112 +47,85 @@ def lambda_handler(event, context):
     """
     AWS Lambda handler function
     Processes API Gateway events and returns responses
-    
-    Args:
-        event: API Gateway event
-        context: Lambda context object
-        
-    Returns:
-        dict: API Gateway response format
     """
-    start_time = time.time()
-    request_id = context.aws_request_id if context else f"lambda-{int(time.time() * 1000)}"
-    
     try:
-        # Extract HTTP method and path
+        logger.info(f"Received event: {json.dumps(event)}")
+        
+        # Extract HTTP method and path from API Gateway event
         http_method = event.get('httpMethod', event.get('requestContext', {}).get('http', {}).get('method', 'GET'))
         path = event.get('path', event.get('rawPath', '/'))
         query_params = event.get('queryStringParameters') or {}
         
-        # Log incoming request with structured data
-        logger.info("Lambda handler invoked", extra={
-            'extra_fields': {
-                'aws_request_id': request_id,
-                'http_method': http_method,
-                'path': path,
-                'query_params': query_params,
-                'source_ip': event.get('requestContext', {}).get('identity', {}).get('sourceIp'),
-                'user_agent': event.get('requestContext', {}).get('identity', {}).get('userAgent'),
-                'remaining_time_ms': context.get_remaining_time_in_millis() if context else 0
-            }
-        })
+        logger.info(f"Processing request: {http_method} {path}")
         
-        # Create a test client for the Flask app
-        with app.test_client() as client:
-            # Add request ID header for Flask app
-            headers = {'X-Request-ID': request_id}
-            
-            # Handle different endpoints
-            if path == '/hello' and http_method == 'GET':
-                response = client.get('/hello', headers=headers)
-            elif path == '/echo' and http_method == 'GET':
-                # Build query string
-                query_string = '&'.join([f"{k}={v}" for k, v in query_params.items()])
-                url = f'/echo?{query_string}' if query_string else '/echo'
-                response = client.get(url, headers=headers)
-            elif path == '/health' and http_method == 'GET':
-                response = client.get('/health', headers=headers)
-            else:
-                # Handle unknown paths
-                response = client.get(path, headers=headers)
-            
-            # Calculate processing time
-            duration_ms = round((time.time() - start_time) * 1000, 2)
-            
-            # Convert Flask response to API Gateway format
-            api_response = {
-                'statusCode': response.status_code,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*',
-                    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-                    'Access-Control-Allow-Headers': 'Content-Type',
-                    'X-Request-ID': request_id,
-                    'X-Response-Time': str(duration_ms)
-                },
-                'body': response.get_data(as_text=True)
+        # Handle different endpoints
+        if path == '/hello' and http_method == 'GET':
+            response_body = {
+                'message': 'Hello World',
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'version': '1.0.0'
             }
+            status_code = 200
             
-            # Log successful response
-            logger.info("Lambda handler completed successfully", extra={
-                'extra_fields': {
-                    'aws_request_id': request_id,
-                    'status_code': response.status_code,
-                    'duration_ms': duration_ms,
-                    'response_size': len(api_response['body']),
-                    'memory_used_mb': context.memory_limit_in_mb if context else 0
+        elif path == '/echo' and http_method == 'GET':
+            msg = query_params.get('msg')
+            if not msg:
+                response_body = {
+                    'error': "Parameter 'msg' is required",
+                    'status_code': 400,
+                    'timestamp': datetime.utcnow().isoformat() + 'Z'
                 }
-            })
-            
-            return api_response
-            
-    except Exception as e:
-        duration_ms = round((time.time() - start_time) * 1000, 2)
-        
-        # Log error with structured data
-        logger.error("Error in lambda_handler", extra={
-            'extra_fields': {
-                'aws_request_id': request_id,
-                'error': str(e),
-                'error_type': type(e).__name__,
-                'duration_ms': duration_ms,
-                'path': event.get('path', 'unknown'),
-                'method': event.get('httpMethod', 'unknown')
+                status_code = 400
+            else:
+                response_body = {
+                    'message': msg,
+                    'echo': True,
+                    'timestamp': datetime.utcnow().isoformat() + 'Z'
+                }
+                status_code = 200
+                
+        elif path == '/health' and http_method == 'GET':
+            response_body = {
+                'status': 'healthy',
+                'timestamp': datetime.utcnow().isoformat() + 'Z',
+                'version': '1.0.0',
+                'environment': os.getenv('ENVIRONMENT', 'development')
             }
-        })
+            status_code = 200
+            
+        else:
+            response_body = {
+                'error': 'Endpoint not found',
+                'status_code': 404,
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            }
+            status_code = 404
+        
+        logger.info(f"Returning response: {status_code}")
+        
+        return {
+            'statusCode': status_code,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+            },
+            'body': json.dumps(response_body)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing request: {str(e)}")
         
         return {
             'statusCode': 500,
             'headers': {
                 'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'X-Request-ID': request_id,
-                'X-Response-Time': str(duration_ms)
+                'Access-Control-Allow-Origin': '*'
             },
             'body': json.dumps({
                 'error': 'Internal server error',
-                'status_code': 500,
-                'request_id': request_id,
+                'message': str(e),
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
         }

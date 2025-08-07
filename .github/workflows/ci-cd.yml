@@ -247,7 +247,7 @@ jobs:
       with:
         context: .
         push: true
-        tags: ${{ steps.meta.outputs.tags }}
+        tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }},${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
         labels: ${{ steps.meta.outputs.labels }}
         cache-from: type=gha
         cache-to: type=gha,mode=max

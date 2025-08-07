@@ -211,7 +211,6 @@ resource "aws_lambda_function" "main" {
       API_VERSION             = "1.0.0"
       PYTHONDONTWRITEBYTECODE = "1"
       PYTHONUNBUFFERED        = "1"
-      AWS_LAMBDA_EXEC_WRAPPER = "/opt/bootstrap"
     }
   }
 
