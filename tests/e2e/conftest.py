@@ -2,6 +2,7 @@
 Configuration for end-to-end tests
 Provides fixtures and utilities for testing deployed API
 """
+
 import os
 import json
 import pytest
@@ -19,7 +20,7 @@ def terraform_outputs():
             cwd="terraform",
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         outputs = json.loads(result.stdout)
         return outputs
@@ -33,9 +34,9 @@ def terraform_outputs():
 def api_endpoints(terraform_outputs):
     """Extract API endpoint URLs from Terraform outputs"""
     return {
-        'api_url': terraform_outputs["api_gateway_url"]["value"],
-        'hello_url': terraform_outputs["hello_endpoint_url"]["value"],
-        'echo_url': terraform_outputs["echo_endpoint_url"]["value"]
+        "api_url": terraform_outputs["api_gateway_url"]["value"],
+        "hello_url": terraform_outputs["hello_endpoint_url"]["value"],
+        "echo_url": terraform_outputs["echo_endpoint_url"]["value"],
     }
 
 
@@ -43,9 +44,9 @@ def api_endpoints(terraform_outputs):
 def lambda_info(terraform_outputs):
     """Extract Lambda function information from Terraform outputs"""
     return {
-        'function_name': terraform_outputs["lambda_function_name"]["value"],
-        'function_arn': terraform_outputs["lambda_function_arn"]["value"],
-        'log_group': terraform_outputs["cloudwatch_log_group_name"]["value"]
+        "function_name": terraform_outputs["lambda_function_name"]["value"],
+        "function_arn": terraform_outputs["lambda_function_arn"]["value"],
+        "log_group": terraform_outputs["cloudwatch_log_group_name"]["value"],
     }
 
 
@@ -54,9 +55,9 @@ def aws_clients():
     """Create AWS service clients for testing"""
     try:
         return {
-            'cloudwatch_logs': boto3.client('logs'),
-            'lambda': boto3.client('lambda'),
-            'cloudwatch': boto3.client('cloudwatch')
+            "cloudwatch_logs": boto3.client("logs"),
+            "lambda": boto3.client("lambda"),
+            "cloudwatch": boto3.client("cloudwatch"),
         }
     except Exception as e:
         pytest.skip(f"Could not create AWS clients: {e}")
@@ -72,9 +73,9 @@ def test_timeout():
 def performance_config():
     """Configuration for performance tests"""
     return {
-        'concurrent_requests': 10,
-        'sustained_duration': 30,
-        'requests_per_second': 2,
-        'max_response_time': 10.0,
-        'min_success_rate': 95.0
+        "concurrent_requests": 10,
+        "sustained_duration": 30,
+        "requests_per_second": 2,
+        "max_response_time": 10.0,
+        "min_success_rate": 95.0,
     }
