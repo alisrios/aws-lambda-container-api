@@ -3,14 +3,15 @@ Integration tests for API endpoints
 Tests the complete API functionality including Flask app integration
 """
 
-import pytest
 import json
-import requests
+import os
+import sys
 import threading
 import time
-import sys
-import os
 from unittest.mock import patch
+
+import pytest
+import requests
 
 # Add src directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))

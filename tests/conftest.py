@@ -3,10 +3,11 @@ Pytest configuration and shared fixtures
 Global test configuration for AWS Lambda Container API tests
 """
 
-import pytest
-import sys
 import os
+import sys
 from pathlib import Path
+
+import pytest
 
 # Add src directory to Python path for all tests
 project_root = Path(__file__).parent.parent

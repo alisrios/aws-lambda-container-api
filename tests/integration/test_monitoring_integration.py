@@ -4,10 +4,11 @@ Tests the complete monitoring stack including health checks and logging
 """
 
 import json
-import pytest
-import requests
 import time
 from unittest.mock import patch
+
+import pytest
+import requests
 
 
 class TestHealthEndpointIntegration:

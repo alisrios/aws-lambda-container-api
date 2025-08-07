@@ -3,11 +3,12 @@ Unit tests for AWS Lambda handler
 Tests the lambda_function.py module and its integration with Flask app
 """
 
-import pytest
 import json
-from unittest.mock import patch, MagicMock
-import sys
 import os
+import sys
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Add src directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))

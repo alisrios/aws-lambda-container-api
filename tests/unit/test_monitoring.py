@@ -4,9 +4,11 @@ Tests structured logging, health endpoint, and monitoring functionality
 """
 
 import json
-import pytest
 import time
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
+
 from src.app import app
 
 

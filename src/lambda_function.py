@@ -5,9 +5,10 @@ Integrates Flask app with AWS Lambda runtime
 
 import json
 import logging
-import time
 import os
+import time
 from datetime import datetime
+
 from app import app
 
 

@@ -4,10 +4,11 @@ Tests monitoring functionality on deployed infrastructure
 """
 
 import json
+import os
+import time
+
 import pytest
 import requests
-import time
-import os
 
 
 class TestDeployedMonitoring:

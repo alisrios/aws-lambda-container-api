@@ -4,12 +4,13 @@ Tests API performance under various load conditions
 Requirements: 7.3, 7.4, 7.5
 """
 
-import time
-import requests
-import pytest
 import concurrent.futures
-from typing import List, Dict, Tuple
 import statistics
+import time
+from typing import Dict, List, Tuple
+
+import pytest
+import requests
 
 
 class TestAPIPerformance:

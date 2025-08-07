@@ -3,11 +3,12 @@ Configuration for end-to-end tests
 Provides fixtures and utilities for testing deployed API
 """
 
-import os
 import json
-import pytest
+import os
 import subprocess
+
 import boto3
+import pytest
 from botocore.exceptions import ClientError
 
 

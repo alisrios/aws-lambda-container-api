@@ -3,12 +3,13 @@ Unit tests for Flask application
 Tests individual functions and components of the app.py module
 """
 
-import pytest
 import json
-from datetime import datetime
-from unittest.mock import patch, MagicMock
-import sys
 import os
+import sys
+from datetime import datetime
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 # Add src directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "src"))

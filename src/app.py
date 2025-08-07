@@ -3,13 +3,14 @@ Flask application for AWS Lambda Container API
 Provides /hello and /echo endpoints as specified in requirements
 """
 
-import os
 import json
+import logging
+import os
+import sys
 import time
 from datetime import datetime
-from flask import Flask, request, jsonify, g
-import logging
-import sys
+
+from flask import Flask, g, jsonify, request
 
 app = Flask(__name__)
 
