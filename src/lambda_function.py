@@ -66,48 +66,21 @@ def lambda_handler(event, context):
 
         logger.info(f"Processing request: {http_method} {path}")
 
-        # Handle different endpoints
-        if path == "/hello" and http_method == "GET":
-            response_body = {
-                "message": "Hello World",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-                "version": "1.0.0",
-            }
-            status_code = 200
-
-        elif path == "/echo" and http_method == "GET":
-            msg = query_params.get("msg")
-            if not msg:
-                response_body = {
-                    "error": "Parameter 'msg' is required",
-                    "status_code": 400,
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                }
-                status_code = 400
-            else:
-                response_body = {
-                    "message": msg,
-                    "echo": True,
-                    "timestamp": datetime.utcnow().isoformat() + "Z",
-                }
-                status_code = 200
-
-        elif path == "/health" and http_method == "GET":
-            response_body = {
-                "status": "healthy",
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-                "version": "1.0.0",
-                "environment": os.getenv("ENVIRONMENT", "development"),
-            }
-            status_code = 200
-
-        else:
-            response_body = {
-                "error": "Endpoint not found",
-                "status_code": 404,
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-            }
-            status_code = 404
+        # Use Flask test client to process the request
+        with app.test_client() as client:
+            # Convert Lambda event to Flask request
+            query_string = "&".join([f"{k}={v}" for k, v in query_params.items()])
+            url = f"{path}?{query_string}" if query_string else path
+            
+            # For Lambda integration, always use GET method to match Flask routes
+            # This allows API Gateway to accept any method but Flask handles it as GET
+            flask_response = client.get(url)
+            
+            status_code = flask_response.status_code
+            try:
+                response_body = flask_response.get_json()
+            except:
+                response_body = json.loads(flask_response.get_data(as_text=True))
 
         logger.info(f"Returning response: {status_code}")
 
@@ -116,8 +89,8 @@ def lambda_handler(event, context):
             "headers": {
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization",
+                "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+                "Access-Control-Allow-Headers": "Content-Type",
             },
             "body": json.dumps(response_body),
         }
@@ -134,8 +107,10 @@ def lambda_handler(event, context):
             "body": json.dumps(
                 {
                     "error": "Internal server error",
+                    "status_code": 500,
                     "message": str(e),
                     "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "request_id": context.aws_request_id if context else "unknown",
                 }
             ),
         }
