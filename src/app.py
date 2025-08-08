@@ -16,8 +16,6 @@ from flask import Flask, g, jsonify, request
 app = Flask(__name__)
 
 
-
-
 # Configure structured logging
 class StructuredFormatter(logging.Formatter):
     """Custom formatter for structured logging"""
