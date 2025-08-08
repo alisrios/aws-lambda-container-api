@@ -8,11 +8,14 @@ import logging
 import os
 import sys
 import time
+import uuid
 from datetime import datetime
 
 from flask import Flask, g, jsonify, request
 
 app = Flask(__name__)
+
+
 
 
 # Configure structured logging
@@ -76,6 +79,11 @@ def get_current_time():
     return time.time()
 
 
+def generate_request_id():
+    """Generate a unique request ID using UUID"""
+    return f"req-{uuid.uuid4().hex[:12]}"
+
+
 @app.before_request
 def before_request():
     """Set up request context for logging"""
@@ -85,9 +93,7 @@ def before_request():
         g.start_time = 0
 
     try:
-        g.request_id = request.headers.get(
-            "X-Request-ID", f"req-{int(get_current_time() * 1000)}"
-        )
+        g.request_id = request.headers.get("X-Request-ID", generate_request_id())
     except Exception:
         g.request_id = "req-error"
 
