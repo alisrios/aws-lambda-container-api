@@ -71,11 +71,11 @@ def lambda_handler(event, context):
             # Convert Lambda event to Flask request
             query_string = "&".join([f"{k}={v}" for k, v in query_params.items()])
             url = f"{path}?{query_string}" if query_string else path
-            
+
             # For Lambda integration, always use GET method to match Flask routes
             # This allows API Gateway to accept any method but Flask handles it as GET
             flask_response = client.get(url)
-            
+
             status_code = flask_response.status_code
             try:
                 response_body = flask_response.get_json()

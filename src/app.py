@@ -24,7 +24,7 @@ class StructuredFormatter(logging.Formatter):
             timestamp = datetime.utcnow().isoformat() + "Z"
         except Exception:
             timestamp = "unknown"
-            
+
         log_entry = {
             "timestamp": timestamp,
             "level": record.levelname,
@@ -40,7 +40,9 @@ class StructuredFormatter(logging.Formatter):
             log_entry["request_id"] = g.request_id
         if hasattr(g, "start_time"):
             try:
-                log_entry["duration_ms"] = round((get_current_time() - g.start_time) * 1000, 2)
+                log_entry["duration_ms"] = round(
+                    (get_current_time() - g.start_time) * 1000, 2
+                )
             except Exception:
                 log_entry["duration_ms"] = 0
 
@@ -81,9 +83,11 @@ def before_request():
         g.start_time = get_current_time()
     except Exception:
         g.start_time = 0
-    
+
     try:
-        g.request_id = request.headers.get("X-Request-ID", f"req-{int(get_current_time() * 1000)}")
+        g.request_id = request.headers.get(
+            "X-Request-ID", f"req-{int(get_current_time() * 1000)}"
+        )
     except Exception:
         g.request_id = "req-error"
 
@@ -111,16 +115,16 @@ def after_request(response):
         logger.info("Request completed")
     except Exception:
         pass  # Skip logging if time functions are failing
-    
+
     # Log monitoring message for caplog tests (skip if time functions are failing)
-    if hasattr(g, 'monitoring_log'):
+    if hasattr(g, "monitoring_log"):
         try:
             logger.info(g.monitoring_log)
         except Exception:
             pass
-    
+
     # Then log endpoint-specific message if available (this will be the last call for assert_called_with)
-    if hasattr(g, 'endpoint_log'):
+    if hasattr(g, "endpoint_log"):
         try:
             logger.info(g.endpoint_log)
         except Exception:
@@ -259,11 +263,13 @@ def health():
         time_error = False
         try:
             current_time = get_current_time()
-            uptime_seconds = current_time - app.start_time if hasattr(app, "start_time") else 0
+            uptime_seconds = (
+                current_time - app.start_time if hasattr(app, "start_time") else 0
+            )
         except Exception:
             time_error = True
             uptime_seconds = 0
-            
+
         # If time functions are failing, return unhealthy status
         if time_error:
             return (
@@ -277,7 +283,7 @@ def health():
                 ),
                 503,
             )
-            
+
         # Basic health checks
         health_status = {
             "status": "healthy",
@@ -292,6 +298,7 @@ def health():
         # Add basic system metrics
         try:
             import psutil
+
             process = psutil.Process()
             health_status["metrics"] = {
                 "memory_usage_mb": round(process.memory_info().rss / 1024 / 1024, 2),
@@ -310,7 +317,7 @@ def health():
             timestamp = datetime.utcnow().isoformat() + "Z"
         except Exception:
             timestamp = "unknown"
-            
+
         return (
             jsonify(
                 {
@@ -358,12 +365,13 @@ def handle_exception(e):
             ),
             503,
         )
-    
+
     # For HTTP exceptions (like 405), let Flask handle them normally
     from werkzeug.exceptions import HTTPException
+
     if isinstance(e, HTTPException):
         raise e
-    
+
     # For other exceptions, return 500
     return (
         jsonify(
