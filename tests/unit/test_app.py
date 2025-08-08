@@ -121,9 +121,38 @@ class TestFlaskApp:
         """Test POST method on GET-only endpoints"""
         response = client.post("/hello")
         assert response.status_code == 405
+        
+        # Verify JSON response format
+        data = response.get_json()
+        assert data is not None
+        assert data["error"] == "Method not allowed"
+        assert data["status_code"] == 405
+        assert "timestamp" in data
+        assert "request_id" in data
 
         response = client.post("/echo")
         assert response.status_code == 405
+        
+        # Verify JSON response format for echo endpoint too
+        data = response.get_json()
+        assert data is not None
+        assert data["error"] == "Method not allowed"
+        assert data["status_code"] == 405
+        assert "timestamp" in data
+        assert "request_id" in data
+
+    def test_405_error_handler(self, client):
+        """Test 405 error handler returns proper JSON response"""
+        response = client.post("/hello")
+        
+        assert response.status_code == 405
+        assert response.content_type == "application/json"
+        
+        data = json.loads(response.data)
+        assert data["error"] == "Method not allowed"
+        assert data["status_code"] == 405
+        assert "timestamp" in data
+        assert "request_id" in data
 
     @patch("app.logger")
     def test_hello_endpoint_logging(self, mock_logger, client):

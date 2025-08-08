@@ -349,6 +349,24 @@ def not_found(error):
     )
 
 
+@app.errorhandler(405)
+def method_not_allowed(error):
+    """Handle 405 Method Not Allowed errors"""
+    logger.warning("405 error occurred - method not allowed")
+
+    return (
+        jsonify(
+            {
+                "error": "Method not allowed",
+                "status_code": 405,
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "request_id": getattr(g, "request_id", "unknown"),
+            }
+        ),
+        405,
+    )
+
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Handle specific exceptions, including time-related errors"""
