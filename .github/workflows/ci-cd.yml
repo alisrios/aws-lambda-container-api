@@ -344,14 +344,8 @@ jobs:
         terraform plan -no-color -input=false \
           -var="ecr_image_tag=${{ github.sha }}" \
           -var="environment=dev" \
-          -target="aws_lambda_function.main" \
-          -target="aws_apigatewayv2_api.main" \
-          -target="aws_apigatewayv2_integration.lambda" \
-          -target="aws_apigatewayv2_route.hello" \
-          -target="aws_apigatewayv2_route.echo" \
-          -target="aws_apigatewayv2_route.health" \
-          -target="aws_apigatewayv2_stage.default" \
-          -target="aws_lambda_permission.api_gateway" \
+          -var="github_repository=${{ github.repository }}" \
+          -var="terraform_state_bucket=${{ vars.TERRAFORM_STATE_BUCKET }}" \
           -out=tfplan
       working-directory: terraform
       continue-on-error: true

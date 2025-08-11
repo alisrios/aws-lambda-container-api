@@ -17,25 +17,14 @@ locals {
   ecr_repository_name  = "${var.project_name}-${var.environment}"
 }
 
-# ECR Repository
-resource "aws_ecr_repository" "main" {
-  name                 = local.ecr_repository_name
-  image_tag_mutability = "MUTABLE"
-  force_delete         = true  # Permite exclusão mesmo com imagens
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
-  encryption_configuration {
-    encryption_type = "AES256"
-  }
-
-  tags = local.common_tags
+# Use existing ECR Repository
+data "aws_ecr_repository" "main" {
+  name = "lambda-container-api-dev"
 }
 
-# ECR Lifecycle Policy
+# ECR Lifecycle Policy (using existing repository)
 resource "aws_ecr_lifecycle_policy" "main" {
-  repository = aws_ecr_repository.main.name
+  repository = data.aws_ecr_repository.main.name
 
   policy = jsonencode({
     rules = [
@@ -71,7 +60,7 @@ resource "aws_ecr_lifecycle_policy" "main" {
 
 # ECR Repository Policy for Lambda access
 resource "aws_ecr_repository_policy" "main" {
-  repository = aws_ecr_repository.main.name
+  repository = data.aws_ecr_repository.main.name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -195,7 +184,7 @@ resource "aws_lambda_function" "main" {
   function_name = local.lambda_function_name
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
-  image_uri     = "${aws_ecr_repository.main.repository_url}:${var.ecr_image_tag}"
+  image_uri     = "${data.aws_ecr_repository.main.repository_url}:${var.ecr_image_tag}"
 
   # Performance Configuration
   memory_size                    = var.lambda_memory_size

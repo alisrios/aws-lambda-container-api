@@ -188,7 +188,7 @@ resource "aws_iam_role_policy" "github_actions_general" {
           "iam:ListOpenIDConnectProviders",
           "iam:TagOpenIDConnectProvider",
           "iam:UntagOpenIDConnectProvider",
-          
+
           # ECR permissions
           "ecr:CreateRepository",
           "ecr:DeleteRepository",
@@ -202,7 +202,7 @@ resource "aws_iam_role_policy" "github_actions_general" {
           "ecr:TagResource",
           "ecr:UntagResource",
           "ecr:ListTagsForResource",
-          
+
           # API Gateway permissions
           "apigateway:GET",
           "apigateway:POST",
@@ -211,7 +211,7 @@ resource "aws_iam_role_policy" "github_actions_general" {
           "apigateway:PATCH",
           "apigateway:TagResource",
           "apigateway:UntagResource",
-          
+
           # CloudWatch permissions
           "logs:CreateLogGroup",
           "logs:DeleteLogGroup",
@@ -232,7 +232,7 @@ resource "aws_iam_role_policy" "github_actions_general" {
           "cloudwatch:TagResource",
           "cloudwatch:UntagResource",
           "cloudwatch:ListTagsForResource",
-          
+
           # SNS permissions
           "sns:CreateTopic",
           "sns:DeleteTopic",
@@ -243,7 +243,7 @@ resource "aws_iam_role_policy" "github_actions_general" {
           "sns:ListTagsForResource",
           "sns:Subscribe",
           "sns:Unsubscribe",
-          
+
           # SQS permissions (for DLQ)
           "sqs:CreateQueue",
           "sqs:DeleteQueue",
@@ -252,7 +252,7 @@ resource "aws_iam_role_policy" "github_actions_general" {
           "sqs:TagQueue",
           "sqs:UntagQueue",
           "sqs:ListQueueTags",
-          
+
           # General permissions
           "sts:GetCallerIdentity",
           "sts:AssumeRole"

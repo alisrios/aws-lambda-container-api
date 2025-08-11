@@ -40,12 +40,12 @@ output "ecr_repository_url" {
 
 output "ecr_repository_name" {
   description = "Nome do repositório ECR"
-  value       = aws_ecr_repository.main.name
+  value       = data.aws_ecr_repository.main.name
 }
 
 output "ecr_repository_arn" {
   description = "ARN do repositório ECR"
-  value       = aws_ecr_repository.main.arn
+  value       = data.aws_ecr_repository.main.arn
 }
 
 output "cloudwatch_log_group_name" {
@@ -71,7 +71,7 @@ output "deployment_info" {
     aws_region      = var.aws_region
     api_url         = aws_apigatewayv2_api.main.api_endpoint
     lambda_function = aws_lambda_function.main.function_name
-    ecr_repository  = aws_ecr_repository.main.name
+    ecr_repository  = data.aws_ecr_repository.main.name
   }
 }
 
