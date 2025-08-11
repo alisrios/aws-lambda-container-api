@@ -35,7 +35,7 @@ output "lambda_invoke_arn" {
 
 output "ecr_repository_url" {
   description = "URL do repositório ECR"
-  value       = aws_ecr_repository.main.repository_url
+  value       = data.aws_ecr_repository.main.repository_url
 }
 
 output "ecr_repository_name" {

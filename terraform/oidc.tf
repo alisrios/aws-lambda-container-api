@@ -182,6 +182,26 @@ resource "aws_iam_role_policy" "github_actions_general" {
           "iam:DeleteRolePolicy",
           "iam:TagRole",
           "iam:UntagRole",
+          "iam:CreateOpenIDConnectProvider",
+          "iam:DeleteOpenIDConnectProvider",
+          "iam:GetOpenIDConnectProvider",
+          "iam:ListOpenIDConnectProviders",
+          "iam:TagOpenIDConnectProvider",
+          "iam:UntagOpenIDConnectProvider",
+          
+          # ECR permissions
+          "ecr:CreateRepository",
+          "ecr:DeleteRepository",
+          "ecr:DescribeRepositories",
+          "ecr:PutLifecyclePolicy",
+          "ecr:DeleteLifecyclePolicy",
+          "ecr:GetLifecyclePolicy",
+          "ecr:PutRepositoryPolicy",
+          "ecr:DeleteRepositoryPolicy",
+          "ecr:GetRepositoryPolicy",
+          "ecr:TagResource",
+          "ecr:UntagResource",
+          "ecr:ListTagsForResource",
           
           # API Gateway permissions
           "apigateway:GET",
@@ -199,6 +219,9 @@ resource "aws_iam_role_policy" "github_actions_general" {
           "logs:PutRetentionPolicy",
           "logs:TagLogGroup",
           "logs:UntagLogGroup",
+          "logs:ListTagsForResource",
+          "logs:TagResource",
+          "logs:UntagResource",
           "cloudwatch:PutMetricAlarm",
           "cloudwatch:DeleteAlarms",
           "cloudwatch:DescribeAlarms",
@@ -208,6 +231,7 @@ resource "aws_iam_role_policy" "github_actions_general" {
           "cloudwatch:ListDashboards",
           "cloudwatch:TagResource",
           "cloudwatch:UntagResource",
+          "cloudwatch:ListTagsForResource",
           
           # SNS permissions
           "sns:CreateTopic",
@@ -217,6 +241,8 @@ resource "aws_iam_role_policy" "github_actions_general" {
           "sns:TagResource",
           "sns:UntagResource",
           "sns:ListTagsForResource",
+          "sns:Subscribe",
+          "sns:Unsubscribe",
           
           # SQS permissions (for DLQ)
           "sqs:CreateQueue",
