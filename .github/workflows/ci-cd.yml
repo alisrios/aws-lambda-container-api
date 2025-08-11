@@ -9,7 +9,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: lambda-container-api
+  ECR_REPOSITORY: lambda-container-api-dev
   TERRAFORM_VERSION: 1.5.0
 
 # Global permissions for OIDC

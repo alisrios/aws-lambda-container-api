@@ -81,7 +81,7 @@ resource "aws_iam_role_policy" "github_actions_ecr" {
           "ecr:PutImage"
         ]
         Resource = [
-          aws_ecr_repository.main.arn,
+          "arn:aws:ecr:${local.region}:${local.account_id}:repository/${var.project_name}-${var.environment}",
           "*"
         ]
       }
@@ -111,8 +111,8 @@ resource "aws_iam_role_policy" "github_actions_lambda" {
           "lambda:InvokeFunction"
         ]
         Resource = [
-          aws_lambda_function.main.arn,
-          "${aws_lambda_function.main.arn}:*"
+          "arn:aws:lambda:${local.region}:${local.account_id}:function:${var.project_name}-${var.environment}",
+          "arn:aws:lambda:${local.region}:${local.account_id}:function:${var.project_name}-${var.environment}:*"
         ]
       }
     ]
