@@ -220,8 +220,6 @@ jobs:
         context: .
         load: true
         tags: ${{ env.ECR_REPOSITORY }}:scan
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
         platforms: linux/amd64
         
     - name: Run Trivy vulnerability scanner
@@ -253,8 +251,6 @@ jobs:
         push: true
         tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }},${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
         platforms: linux/amd64
         build-args: |
           BUILDKIT_INLINE_CACHE=1
