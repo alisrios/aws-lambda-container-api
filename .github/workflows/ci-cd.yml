@@ -10,7 +10,7 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REPOSITORY: lambda-container-api-dev
-  TERRAFORM_VERSION: 1.5.0
+  TERRAFORM_VERSION: 1.6.0
 
 # Global permissions for OIDC
 permissions:
@@ -517,9 +517,11 @@ jobs:
       working-directory: terraform
       continue-on-error: true
       
-    - name: Check Backend Configuration
+    - name: Check and Fix Terraform Configuration
       run: |
-        echo "🔍 Verificando configuração do backend..."
+        echo "🔍 Verificando configuração do Terraform..."
+        
+        # Verificar se backend.tf existe
         if [ -f "backend.tf" ]; then
           echo "📋 Conteúdo do backend.tf:"
           cat backend.tf
@@ -527,25 +529,123 @@ jobs:
           echo "❌ Arquivo backend.tf não encontrado!"
           exit 1
         fi
+        
+        echo ""
+        echo "🔧 Verificando sintaxe dos arquivos Terraform..."
+        
+        # Verificar se há problemas de sintaxe
+        for file in *.tf; do
+          if [ -f "$file" ]; then
+            echo "Verificando $file..."
+            # Verificar se o arquivo tem sintaxe válida
+            if ! terraform fmt -check "$file" >/dev/null 2>&1; then
+              echo "⚠️ Formatando $file..."
+              terraform fmt "$file"
+            fi
+          fi
+        done
+        
+        echo "✅ Verificação de sintaxe concluída"
+        
+        # Verificar se há referências problemáticas
+        echo ""
+        echo "🔍 Verificando referências de variáveis..."
+        if grep -r "checkable" . 2>/dev/null; then
+          echo "⚠️ Encontradas referências 'checkable' problemáticas"
+        fi
+        
+        # Verificar versões no versions.tf
+        if [ -f "versions.tf" ]; then
+          echo "📋 Conteúdo do versions.tf:"
+          cat versions.tf
+        fi
+        
+        # Se o backend.tf tem problemas, criar um limpo
+        if grep -q "use_lockfile" backend.tf 2>/dev/null; then
+          echo "⚠️ Encontrado parâmetro 'use_lockfile' inválido no backend.tf"
+          echo "🔧 Criando backend.tf limpo..."
+          cat > backend.tf << 'EOF'
+        # Backend configuration for Terraform state
+        # This stores the Terraform state in S3 with versioning for state protection
+        
+        terraform {
+          backend "s3" {
+            bucket  = "bucket-state-locking"
+            key     = "lambda-container-api/terraform.tfstate"
+            region  = "us-east-1"
+            encrypt = true
+          }
+        }
+        EOF
+          echo "✅ backend.tf corrigido"
+        fi
       working-directory: terraform
         
     - name: Terraform Init
       id: init
       run: |
         echo "🔄 Inicializando Terraform..."
-        if terraform init; then
+        
+        # Limpar cache do Terraform se existir
+        rm -rf .terraform .terraform.lock.hcl
+        
+        # Verificar versão do Terraform
+        terraform version
+        
+        # Tentar inicializar com diferentes estratégias
+        echo "Tentativa 1: Init com reconfigure..."
+        if terraform init -reconfigure; then
           echo "✅ Terraform inicializado com sucesso!"
         else
-          echo "❌ Erro na inicialização do Terraform"
-          echo "📋 Verificando configuração..."
-          ls -la
-          exit 1
+          echo "⚠️ Falha na primeira tentativa"
+          echo "Tentativa 2: Init com upgrade..."
+          if terraform init -upgrade; then
+            echo "✅ Terraform inicializado com upgrade!"
+          else
+            echo "⚠️ Falha na segunda tentativa"
+            echo "Tentativa 3: Init básico..."
+            if terraform init; then
+              echo "✅ Terraform inicializado com init básico!"
+            else
+              echo "❌ Todas as tentativas de inicialização falharam"
+              echo "📋 Informações de debug:"
+              ls -la
+              echo ""
+              echo "📋 Conteúdo do backend.tf:"
+              cat backend.tf
+              echo ""
+              echo "📋 Logs detalhados:"
+              terraform init -reconfigure 2>&1 || true
+              exit 1
+            fi
+          fi
         fi
       working-directory: terraform
       
     - name: Terraform Validate
       id: validate
-      run: terraform validate -no-color
+      run: |
+        echo "🔍 Validando configuração do Terraform..."
+        if terraform validate -no-color; then
+          echo "✅ Configuração Terraform válida!"
+        else
+          echo "❌ Erro na validação do Terraform"
+          echo "📋 Tentando identificar o problema..."
+          
+          # Verificar se há problemas específicos com variáveis
+          echo "Verificando arquivos de variáveis..."
+          if [ -f "variables.tf" ]; then
+            echo "📋 Conteúdo do variables.tf:"
+            head -20 variables.tf
+          fi
+          
+          # Verificar se há problemas com versões
+          echo "📋 Verificando versões do provider..."
+          terraform version
+          terraform providers
+          
+          exit 1
+        fi
       working-directory: terraform
       
     - name: Terraform Plan
