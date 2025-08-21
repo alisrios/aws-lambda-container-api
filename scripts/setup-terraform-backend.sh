@@ -6,8 +6,7 @@
 set -e
 
 # Configurações
-BUCKET_NAME="terraform-state-lambda-container-api-$(date +%s)"
-DYNAMODB_TABLE="terraform-state-lock"
+BUCKET_NAME="bucket-state-locking"
 AWS_REGION="us-east-1"
 
 # Cores para output
@@ -51,14 +50,23 @@ check_aws_cli() {
 create_s3_bucket() {
     print_status "Criando bucket S3: $BUCKET_NAME"
     
-    # Criar bucket
-    if aws s3api create-bucket \
-        --bucket "$BUCKET_NAME" \
-        --region "$AWS_REGION" \
-        --create-bucket-configuration LocationConstraint="$AWS_REGION" 2>/dev/null; then
+    # Criar bucket (us-east-1 não precisa de LocationConstraint)
+    if [ "$AWS_REGION" = "us-east-1" ]; then
+        aws s3api create-bucket \
+            --bucket "$BUCKET_NAME" \
+            --region "$AWS_REGION"
+    else
+        aws s3api create-bucket \
+            --bucket "$BUCKET_NAME" \
+            --region "$AWS_REGION" \
+            --create-bucket-configuration LocationConstraint="$AWS_REGION"
+    fi
+    
+    if [ $? -eq 0 ]; then
         print_success "Bucket S3 criado: $BUCKET_NAME"
     else
-        print_warning "Bucket pode já existir ou erro na criação"
+        print_error "Erro ao criar bucket S3"
+        exit 1
     fi
     
     # Habilitar versionamento
@@ -89,25 +97,14 @@ create_s3_bucket() {
     print_success "Acesso público bloqueado no bucket"
 }
 
-# Criar tabela DynamoDB para lock
-create_dynamodb_table() {
-    print_status "Criando tabela DynamoDB: $DYNAMODB_TABLE"
+# Configurar políticas adicionais do bucket
+configure_bucket_policies() {
+    print_status "Configurando políticas adicionais do bucket..."
     
-    if aws dynamodb create-table \
-        --table-name "$DYNAMODB_TABLE" \
-        --attribute-definitions AttributeName=LockID,AttributeType=S \
-        --key-schema AttributeName=LockID,KeyType=HASH \
-        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
-        --region "$AWS_REGION" &> /dev/null; then
-        print_success "Tabela DynamoDB criada: $DYNAMODB_TABLE"
-    else
-        print_warning "Tabela pode já existir"
-    fi
+    # Com versionamento habilitado, o S3 fornece proteção básica contra
+    # corrupção de estado sem necessidade de DynamoDB
     
-    # Aguardar tabela ficar ativa
-    print_status "Aguardando tabela ficar ativa..."
-    aws dynamodb wait table-exists --table-name "$DYNAMODB_TABLE" --region "$AWS_REGION"
-    print_success "Tabela DynamoDB está ativa"
+    print_success "Bucket configurado com versionamento para proteção de estado"
 }
 
 # Atualizar configuração do backend
@@ -117,15 +114,14 @@ update_backend_config() {
     # Atualizar arquivo backend.tf
     cat > terraform/backend.tf << EOF
 # Backend configuration for Terraform state
-# This stores the Terraform state in S3 with DynamoDB locking
+# This stores the Terraform state in S3 with versioning for basic state protection
 
 terraform {
   backend "s3" {
-    bucket         = "$BUCKET_NAME"
-    key            = "lambda-container-api/terraform.tfstate"
-    region         = "$AWS_REGION"
-    dynamodb_table = "$DYNAMODB_TABLE"
-    encrypt        = true
+    bucket  = "$BUCKET_NAME"
+    key     = "lambda-container-api/terraform.tfstate"
+    region  = "$AWS_REGION"
+    encrypt = true
   }
 }
 EOF
@@ -158,14 +154,13 @@ main() {
     echo ""
     
     print_status "Bucket S3: $BUCKET_NAME"
-    print_status "Tabela DynamoDB: $DYNAMODB_TABLE"
     print_status "Região: $AWS_REGION"
     echo ""
     
     # Executar configuração
     check_aws_cli
     create_s3_bucket
-    create_dynamodb_table
+    configure_bucket_policies
     update_backend_config
     init_terraform
     
@@ -178,8 +173,7 @@ main() {
     print_success "Backend remoto S3 configurado com sucesso!"
     echo ""
     echo "Recursos criados:"
-    echo "- Bucket S3: $BUCKET_NAME"
-    echo "- Tabela DynamoDB: $DYNAMODB_TABLE"
+    echo "- Bucket S3 com versionamento: $BUCKET_NAME"
     echo ""
     echo "Próximos passos:"
     echo "1. cd terraform"
@@ -188,6 +182,9 @@ main() {
     echo ""
     print_warning "IMPORTANTE: Anote o nome do bucket para usar em outros ambientes!"
     echo "Bucket: $BUCKET_NAME"
+    echo ""
+    print_status "O bucket foi criado com versionamento habilitado para proteção de estado"
+    print_status "Não é mais necessário usar DynamoDB para state locking básico"
 }
 
 # Executar função principal

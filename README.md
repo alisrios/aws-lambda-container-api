@@ -19,7 +19,7 @@ Implementa uma API Python simples usando Flask, empacotada em container Docker, 
 - ✅ **Rotas `/hello` e `/echo`** conforme especificado
 - ✅ **Container Docker** publicado no Amazon ECR
 - ✅ **Infraestrutura Terraform** com Lambda e API Gateway
-- ✅ **Backend remoto S3** para estado do Terraform
+- ✅ **Backend remoto S3** com versionamento para estado do Terraform
 - ✅ **Outputs** da URL da API e nome da função
 - ✅ **CI/CD automatizado** com GitHub Actions
 
@@ -81,6 +81,20 @@ docker-compose down
 
 ## ☁️ Como Subir a Infraestrutura
 
+⚠️ **IMPORTANTE**: Siga a ordem exata dos passos abaixo para evitar erros no deployment!
+
+### 📋 Ordem de Execução (Obrigatória)
+
+1. **Backend S3** → Configurar armazenamento do estado Terraform
+2. **Repositório ECR** → Criar repositório para imagens Docker
+3. **Build & Push** → Construir e enviar imagem Docker
+4. **Terraform Apply** → Criar infraestrutura AWS
+
+**Por que essa ordem é importante?**
+- O Terraform precisa do repositório ECR existente para referenciar
+- A função Lambda precisa da imagem Docker já disponível no ECR
+- Sem a imagem, o `terraform apply` falhará na criação da Lambda
+
 ### 1. Configurar Backend S3 (Obrigatório)
 
 ```bash
@@ -90,11 +104,37 @@ docker-compose down
 
 Este script irá:
 - Criar bucket S3 para estado do Terraform
-- Criar tabela DynamoDB para lock de estado
 - Configurar criptografia e versionamento
+- Bloquear acesso público ao bucket
 - Atualizar configuração do backend
 
-### 2. Deploy da Infraestrutura
+### 2. Criar Repositório ECR (Obrigatório)
+
+```bash
+# Criar repositório ECR antes do Terraform
+./scripts/create-ecr-repository.sh
+```
+
+Este script irá:
+- Verificar credenciais AWS
+- Criar repositório ECR se não existir
+- Configurar scanning de vulnerabilidades
+- Habilitar criptografia AES256
+
+### 3. Build e Push da Imagem Docker (Obrigatório)
+
+```bash
+# Build e push da imagem para ECR
+./build-and-push.sh
+```
+
+Este script irá:
+- Fazer build da imagem Docker otimizada para Lambda
+- Testar a imagem localmente
+- Fazer push para o repositório ECR
+- Criar tags latest e commit hash
+
+### 4. Deploy da Infraestrutura
 
 ```bash
 # Navegar para diretório terraform
@@ -110,17 +150,7 @@ terraform plan
 terraform apply
 ```
 
-### 3. Build e Push da Imagem Docker
-
-```bash
-# Voltar ao diretório raiz
-cd ..
-
-# Build e push da imagem para ECR
-./build-and-push.sh
-```
-
-### 4. Verificar Deployment
+### 5. Verificar Deployment
 
 ```bash
 # Obter URL da API dos outputs do Terraform
@@ -130,6 +160,33 @@ terraform output api_gateway_url
 # Testar API deployada
 curl $(terraform output -raw api_gateway_url)/hello
 curl "$(terraform output -raw api_gateway_url)/echo?msg=teste"
+```
+
+### 🚀 Script de Deploy Completo (Alternativa)
+
+Para executar todos os passos de uma vez, você pode usar:
+
+```bash
+# Deploy completo automatizado
+./scripts/full-deploy.sh
+```
+
+Ou executar manualmente na ordem:
+
+```bash
+# 1. Configurar backend
+./scripts/setup-terraform-backend.sh
+
+# 2. Criar repositório ECR
+./scripts/create-ecr-repository.sh
+
+# 3. Build e push da imagem
+./build-and-push.sh
+
+# 4. Deploy da infraestrutura
+cd terraform
+terraform apply
+cd ..
 ```
 
 ## 🧪 Como Testar a API
@@ -319,7 +376,6 @@ graph TB
     F --> G[Public HTTPS Endpoint]
     
     H[S3 Backend] --> D
-    I[DynamoDB Lock] --> D
     J[CloudWatch Logs] --> E
     K[CloudWatch Metrics] --> E
     L[X-Ray Tracing] --> E
@@ -336,8 +392,7 @@ graph TB
 - **API Gateway**: HTTP API com integração Lambda
 - **ECR Repository**: Armazenamento de imagens Docker
 - **CloudWatch**: Logs, métricas e alertas
-- **S3**: Backend remoto para estado Terraform
-- **DynamoDB**: Lock de estado Terraform
+- **S3**: Backend remoto com versionamento para estado Terraform
 - **IAM**: Roles e políticas de segurança
 
 ## 📊 Outputs do Terraform
@@ -385,7 +440,6 @@ terraform destroy
 ```bash
 # Limpar backend S3 (cuidado com outros projetos)
 # aws s3 rb s3://terraform-state-lambda-container-api-TIMESTAMP --force
-# aws dynamodb delete-table --table-name terraform-state-lock
 ```
 
 ## 📈 Métricas de Performance
@@ -412,6 +466,7 @@ aws-lambda-container-api/
 │   └── outputs.tf                 # Outputs
 ├── scripts/
 │   ├── setup-terraform-backend.sh # Backend setup
+│   ├── create-ecr-repository.sh   # ECR repository creation
 │   └── test-api.sh                # API testing
 ├── Dockerfile                     # Container config
 ├── docker-compose.yml             # Local development
@@ -431,14 +486,29 @@ cd terraform
 terraform init -reconfigure
 ```
 
-#### 2. Erro no Build Docker
+#### 2. Repositório ECR não existe
+```bash
+# Criar repositório ECR
+./scripts/create-ecr-repository.sh
+```
+
+#### 3. Erro no Build Docker
 ```bash
 # Limpar cache Docker
 docker system prune -a
 ./build-and-push.sh --no-cache
 ```
 
-#### 3. Lambda não atualiza
+#### 4. Terraform falha por falta de imagem
+```bash
+# Verificar se imagem existe no ECR
+aws ecr describe-images --repository-name lambda-container-api-dev
+
+# Se não existir, fazer build e push
+./build-and-push.sh
+```
+
+#### 5. Lambda não atualiza
 ```bash
 # Forçar update da função
 aws lambda update-function-code \
@@ -446,7 +516,7 @@ aws lambda update-function-code \
   --image-uri $(terraform output -raw ecr_repository_url):latest
 ```
 
-#### 4. API Gateway 500 Error
+#### 6. API Gateway 500 Error
 ```bash
 # Verificar logs CloudWatch
 aws logs tail /aws/lambda/lambda-container-api-dev --follow
@@ -480,7 +550,7 @@ aws cloudwatch get-metric-statistics \
 ✅ **Container Docker**: Otimizado para AWS Lambda  
 ✅ **ECR Integration**: Build e push automatizado  
 ✅ **Terraform IaC**: Infraestrutura completa como código  
-✅ **Backend S3**: Estado remoto com lock DynamoDB  
+✅ **Backend S3**: Estado remoto com versionamento  
 ✅ **API Gateway**: HTTP API integrado à Lambda  
 ✅ **Outputs**: URL da API e nome da função  
 ✅ **CI/CD**: Pipeline completo com GitHub Actions  
@@ -504,7 +574,7 @@ aws cloudwatch get-metric-statistics \
 
 2. **API Gateway Integration**: Precisou ajustar o handler Lambda para processar corretamente eventos do API Gateway.
 
-3. **Terraform Backend**: Implementado script automatizado para configurar S3 backend com segurança.
+3. **Terraform Backend**: Implementado script automatizado para configurar S3 backend com versionamento e segurança, eliminando a necessidade de DynamoDB.
 
 4. **CI/CD Permissions**: Configurado IAM roles com permissões mínimas necessárias.
 
