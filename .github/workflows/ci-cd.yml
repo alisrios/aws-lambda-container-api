@@ -169,9 +169,9 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     
     outputs:
-      image-uri: ${{ steps.build-image.outputs.image }}
-      image-tag: ${{ steps.meta.outputs.tags }}
-      image-digest: ${{ steps.build-image.outputs.digest }}
+      image-uri: ${{ steps.build-vars.outputs.full-image-latest }}
+      image-tag: ${{ steps.build-vars.outputs.commit-hash }}
+      ecr-repository: ${{ steps.build-vars.outputs.ecr-repository-name }}
     
     steps:
     - name: Checkout code
@@ -184,29 +184,68 @@ jobs:
         aws-region: ${{ env.AWS_REGION }}
         role-session-name: GitHubActions-BuildAndPush-${{ github.run_id }}
         
+    - name: Set build variables
+      id: build-vars
+      run: |
+        # Set project variables
+        PROJECT_NAME="lambda-container-api"
+        ENVIRONMENT="dev"
+        
+        # Get commit hash (7 digits)
+        COMMIT_HASH=$(echo ${{ github.sha }} | cut -c1-7)
+        
+        # Build repository name
+        ECR_REPOSITORY_NAME="${PROJECT_NAME}-${ENVIRONMENT}"
+        
+        # Get AWS Account ID
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        ECR_URI="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+        
+        # Build full image names
+        FULL_IMAGE_LATEST="${ECR_URI}/${ECR_REPOSITORY_NAME}:latest"
+        FULL_IMAGE_COMMIT="${ECR_URI}/${ECR_REPOSITORY_NAME}:${COMMIT_HASH}"
+        
+        # Set outputs
+        echo "project-name=${PROJECT_NAME}" >> $GITHUB_OUTPUT
+        echo "environment=${ENVIRONMENT}" >> $GITHUB_OUTPUT
+        echo "commit-hash=${COMMIT_HASH}" >> $GITHUB_OUTPUT
+        echo "ecr-repository-name=${ECR_REPOSITORY_NAME}" >> $GITHUB_OUTPUT
+        echo "account-id=${ACCOUNT_ID}" >> $GITHUB_OUTPUT
+        echo "ecr-uri=${ECR_URI}" >> $GITHUB_OUTPUT
+        echo "full-image-latest=${FULL_IMAGE_LATEST}" >> $GITHUB_OUTPUT
+        echo "full-image-commit=${FULL_IMAGE_COMMIT}" >> $GITHUB_OUTPUT
+        
+        # Print configuration
+        echo "📋 Build Configuration:"
+        echo "   - Project: ${PROJECT_NAME}"
+        echo "   - Environment: ${ENVIRONMENT}"
+        echo "   - Repository: ${ECR_REPOSITORY_NAME}"
+        echo "   - Commit Hash: ${COMMIT_HASH}"
+        echo "   - Latest Image: ${FULL_IMAGE_LATEST}"
+        echo "   - Commit Image: ${FULL_IMAGE_COMMIT}"
+        
+    - name: Create ECR repository if not exists
+      run: |
+        echo "🔍 Checking if ECR repository exists..."
+        if aws ecr describe-repositories --repository-names "${{ steps.build-vars.outputs.ecr-repository-name }}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+          echo "✅ ECR repository already exists: ${{ steps.build-vars.outputs.ecr-repository-name }}"
+        else
+          echo "📝 Creating ECR repository: ${{ steps.build-vars.outputs.ecr-repository-name }}"
+          aws ecr create-repository \
+            --repository-name "${{ steps.build-vars.outputs.ecr-repository-name }}" \
+            --region "${{ env.AWS_REGION }}" \
+            --image-scanning-configuration scanOnPush=true \
+            --encryption-configuration encryptionType=AES256
+          echo "✅ ECR repository created successfully!"
+        fi
+        
     - name: Login to Amazon ECR
       id: login-ecr
-      uses: aws-actions/amazon-ecr-login@v2
-      
-    - name: Extract metadata for Docker
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=sha,prefix={{branch}}-
-          type=raw,value=latest,enable={{is_default_branch}}
-        labels: |
-          org.opencontainers.image.title=${{ env.ECR_REPOSITORY }}
-          org.opencontainers.image.description=AWS Lambda Container API
-          org.opencontainers.image.vendor=CI/CD Pipeline
-          org.opencontainers.image.version=${{ github.sha }}
-          org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
-          org.opencontainers.image.revision=${{ github.sha }}
-          org.opencontainers.image.source=${{ github.repositoryUrl }}
-          
+      run: |
+        echo "🔐 Logging into ECR..."
+        aws ecr get-login-password --region "${{ env.AWS_REGION }}" | docker login --username AWS --password-stdin "${{ steps.build-vars.outputs.ecr-uri }}"
+        echo "✅ ECR login successful"
+        
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
       with:
@@ -214,18 +253,70 @@ jobs:
           image=moby/buildkit:v0.12.0
           network=host
           
-    - name: Build Docker image for scanning
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        load: true
-        tags: ${{ env.ECR_REPOSITORY }}:scan
-        platforms: linux/amd64
+    - name: Clean up old local images
+      run: |
+        echo "🧹 Cleaning up old local images..."
+        docker rmi "${{ steps.build-vars.outputs.ecr-repository-name }}:latest" 2>/dev/null || true
+        docker rmi "${{ steps.build-vars.outputs.ecr-repository-name }}:${{ steps.build-vars.outputs.commit-hash }}" 2>/dev/null || true
+        docker rmi "${{ steps.build-vars.outputs.full-image-latest }}" 2>/dev/null || true
+        docker rmi "${{ steps.build-vars.outputs.full-image-commit }}" 2>/dev/null || true
+        echo "✅ Cleanup completed"
+        
+    - name: Build Docker image for Lambda
+      run: |
+        echo "🏗️ Building Docker image for AWS Lambda (linux/amd64)..."
+        docker buildx build \
+          --platform linux/amd64 \
+          --load \
+          -t "${{ steps.build-vars.outputs.ecr-repository-name }}:latest" \
+          -t "${{ steps.build-vars.outputs.ecr-repository-name }}:${{ steps.build-vars.outputs.commit-hash }}" \
+          .
+        echo "✅ Docker build completed"
+        
+    - name: Tag images for ECR
+      run: |
+        echo "🏷️ Tagging images for ECR..."
+        docker tag "${{ steps.build-vars.outputs.ecr-repository-name }}:latest" "${{ steps.build-vars.outputs.full-image-latest }}"
+        docker tag "${{ steps.build-vars.outputs.ecr-repository-name }}:${{ steps.build-vars.outputs.commit-hash }}" "${{ steps.build-vars.outputs.full-image-commit }}"
+        echo "✅ Images tagged successfully"
+        
+    - name: Test Docker image
+      run: |
+        echo "🧪 Testing Docker image..."
+        docker run --rm --platform linux/amd64 --entrypoint="" "${{ steps.build-vars.outputs.ecr-repository-name }}:latest" python -c "
+        import lambda_function
+        import app
+        print('✅ All modules imported successfully')
+        print('✅ Image OK')
+        " || {
+          echo "❌ Error: Image failed basic test"
+          exit 1
+        }
+        echo "✅ Image test passed"
+        
+    - name: Verify image compatibility
+      run: |
+        echo "🔍 Verifying image compatibility with Lambda..."
+        
+        # Check architecture
+        ARCH=$(docker inspect "${{ steps.build-vars.outputs.full-image-latest }}" --format='{{.Architecture}}')
+        if [ "$ARCH" != "amd64" ]; then
+          echo "❌ Error: Image is not amd64 architecture: $ARCH"
+          exit 1
+        fi
+        echo "✅ Architecture check passed: $ARCH"
+        
+        # Check if images are tagged correctly
+        if ! docker images | grep -q "${{ steps.build-vars.outputs.ecr-repository-name }}"; then
+          echo "❌ Error: Images not tagged correctly"
+          exit 1
+        fi
+        echo "✅ Image tags verified"
         
     - name: Run Trivy vulnerability scanner
       uses: aquasecurity/trivy-action@0.28.0
       with:
-        image-ref: ${{ env.ECR_REPOSITORY }}:scan
+        image-ref: ${{ steps.build-vars.outputs.ecr-repository-name }}:latest
         format: 'sarif'
         output: 'trivy-results.sarif'
         severity: 'CRITICAL,HIGH,MEDIUM'
@@ -239,28 +330,56 @@ jobs:
     - name: Run Trivy vulnerability scanner (table format)
       uses: aquasecurity/trivy-action@0.28.0
       with:
-        image-ref: ${{ env.ECR_REPOSITORY }}:scan
+        image-ref: ${{ steps.build-vars.outputs.ecr-repository-name }}:latest
         format: 'table'
         severity: 'CRITICAL,HIGH'
         
-    - name: Build and push optimized Docker image
-      id: build-image
-      uses: docker/build-push-action@v6
-      with:
-        context: .
-        push: true
-        tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }},${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
-        labels: ${{ steps.meta.outputs.labels }}
-        platforms: linux/amd64
-        build-args: |
-          BUILDKIT_INLINE_CACHE=1
-        provenance: true
-        sbom: true
+    - name: Push images to ECR
+      id: push-image
+      run: |
+        echo "📤 Pushing images to ECR..."
+        echo "   - Pushing latest tag..."
+        docker push "${{ steps.build-vars.outputs.full-image-latest }}"
+        echo "   - Pushing commit tag (${{ steps.build-vars.outputs.commit-hash }})..."
+        docker push "${{ steps.build-vars.outputs.full-image-commit }}"
+        
+        # Get image digest
+        DIGEST=$(docker inspect "${{ steps.build-vars.outputs.full-image-latest }}" --format='{{index .RepoDigests 0}}' | cut -d'@' -f2)
+        echo "digest=${DIGEST}" >> $GITHUB_OUTPUT
+        
+        echo "✅ Images pushed successfully!"
+        
+    - name: Verify ECR push
+      run: |
+        echo "✅ Verifying images in ECR..."
+        aws ecr describe-images \
+          --repository-name "${{ steps.build-vars.outputs.ecr-repository-name }}" \
+          --region "${{ env.AWS_REGION }}" \
+          --image-ids imageTag="latest" >/dev/null 2>&1 || {
+          echo "❌ Error: Failed to verify image in ECR"
+          exit 1
+        }
+        echo "✅ ECR verification successful"
+        
+    - name: Update Lambda function if exists
+      run: |
+        echo "🔍 Checking if Lambda function exists..."
+        LAMBDA_FUNCTION_NAME="${{ steps.build-vars.outputs.project-name }}-${{ steps.build-vars.outputs.environment }}"
+        if aws lambda get-function --function-name "${LAMBDA_FUNCTION_NAME}" --region "${{ env.AWS_REGION }}" >/dev/null 2>&1; then
+          echo "🔄 Updating Lambda function code..."
+          aws lambda update-function-code \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --image-uri "${{ steps.build-vars.outputs.full-image-latest }}" \
+            --region "${{ env.AWS_REGION }}"
+          echo "✅ Lambda function updated!"
+        else
+          echo "ℹ️ Lambda function doesn't exist yet - will be created by Terraform"
+        fi
         
     - name: Generate SBOM
       uses: anchore/sbom-action@v0.17.2
       with:
-        image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+        image: ${{ steps.build-vars.outputs.full-image-latest }}
         format: spdx-json
         output-file: sbom.spdx.json
         
@@ -271,25 +390,27 @@ jobs:
         path: sbom.spdx.json
         retention-days: 30
         
-    - name: Image size analysis
+    - name: Build summary
       run: |
-        echo "## 📦 Docker Image Analysis" >> $GITHUB_STEP_SUMMARY
+        echo "## 📦 Docker Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Build Configuration:**" >> $GITHUB_STEP_SUMMARY
+        echo "- **Project:** ${{ steps.build-vars.outputs.project-name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Environment:** ${{ steps.build-vars.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Repository:** ${{ steps.build-vars.outputs.ecr-repository-name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit Hash:** ${{ steps.build-vars.outputs.commit-hash }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Images Created:**" >> $GITHUB_STEP_SUMMARY
+        echo "- **Latest:** ${{ steps.build-vars.outputs.full-image-latest }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Commit:** ${{ steps.build-vars.outputs.full-image-commit }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
         # Get image size
-        IMAGE_SIZE=$(docker images ${{ env.ECR_REPOSITORY }}:scan --format "table {{.Size}}" | tail -n 1)
+        IMAGE_SIZE=$(docker images "${{ steps.build-vars.outputs.ecr-repository-name }}:latest" --format "table {{.Size}}" | tail -n 1)
         echo "**Image Size:** $IMAGE_SIZE" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
-        # Get layer information
-        echo "**Image Layers:**" >> $GITHUB_STEP_SUMMARY
-        docker history ${{ env.ECR_REPOSITORY }}:scan --format "table {{.CreatedBy}}\t{{.Size}}" | head -10 >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        
-        echo "**Image Digest:** ${{ steps.build-image.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
-        
-    - name: Image digest
-      run: echo ${{ steps.build-image.outputs.digest }}
+        echo "✅ **Status:** Build and push completed successfully!" >> $GITHUB_STEP_SUMMARY
 
   deploy:
     name: Deploy Infrastructure
@@ -342,7 +463,8 @@ jobs:
       id: plan
       run: |
         terraform plan -no-color -input=false \
-          -var="ecr_image_tag=${{ github.sha }}" \
+          -var="ecr_image_tag=${{ needs.build-and-push.outputs.image-tag }}" \
+          -var="ecr_repository_name=${{ needs.build-and-push.outputs.ecr-repository }}" \
           -var="environment=dev" \
           -var="github_repository=${{ github.repository }}" \
           -var="terraform_state_bucket=${{ vars.TERRAFORM_STATE_BUCKET }}" \
