@@ -658,10 +658,44 @@ jobs:
         aws_region = "${{ env.AWS_REGION }}"
         ecr_image_tag = "${{ needs.build-and-push.outputs.image-tag }}"
         ecr_repository_name = "${{ needs.build-and-push.outputs.ecr-repository }}"
+        skip_oidc_resources = true
+        github_repository = "${{ github.repository }}"
         EOF
         
-        # Executar terraform plan
-        terraform plan -no-color -input=false -out=tfplan
+        echo "📋 Conteúdo do terraform.tfvars criado:"
+        cat terraform.tfvars
+        
+        # Verificar se estamos executando com a role GitHub Actions
+        CURRENT_ROLE=$(aws sts get-caller-identity --query Arn --output text)
+        echo "🔍 Role atual: $CURRENT_ROLE"
+        
+        if echo "$CURRENT_ROLE" | grep -q "github-actions-role"; then
+          echo "⚠️ Detectada execução via GitHub Actions - ajustando configuração..."
+          echo "skip_github_oidc_modification = true" >> terraform.tfvars
+        fi
+        
+        # Executar terraform plan excluindo recursos OIDC problemáticos
+        echo "🔍 Executando terraform plan..."
+        if terraform plan -no-color -input=false \
+          -target="aws_lambda_function.main" \
+          -target="aws_apigatewayv2_api.main" \
+          -target="aws_apigatewayv2_integration.lambda" \
+          -target="aws_apigatewayv2_stage.default" \
+          -target="aws_apigatewayv2_route.hello" \
+          -target="aws_apigatewayv2_route.echo" \
+          -target="aws_apigatewayv2_route.health" \
+          -target="aws_cloudwatch_log_group.lambda" \
+          -target="aws_cloudwatch_log_group.api_gateway" \
+          -target="aws_iam_role.lambda" \
+          -target="aws_iam_role_policy.lambda_logs" \
+          -target="aws_iam_role_policy_attachment.lambda_basic" \
+          -target="aws_lambda_permission.api_gateway" \
+          -out=tfplan; then
+          echo "✅ Terraform plan executado com sucesso (recursos principais)"
+        else
+          echo "⚠️ Plan com targets específicos falhou, tentando plan completo..."
+          terraform plan -no-color -input=false -out=tfplan
+        fi
       working-directory: terraform
       continue-on-error: true
       
@@ -697,13 +731,39 @@ jobs:
       id: apply
       run: |
         echo "🚀 Aplicando mudanças do Terraform..."
-        if terraform apply -auto-approve tfplan; then
-          echo "✅ Terraform apply executado com sucesso!"
+        
+        # Primeiro, tentar aplicar apenas os recursos principais (sem OIDC)
+        echo "Tentativa 1: Apply com recursos principais..."
+        if terraform apply -auto-approve \
+          -target="aws_lambda_function.main" \
+          -target="aws_apigatewayv2_api.main" \
+          -target="aws_apigatewayv2_integration.lambda" \
+          -target="aws_apigatewayv2_stage.default" \
+          -target="aws_apigatewayv2_route.hello" \
+          -target="aws_apigatewayv2_route.echo" \
+          -target="aws_apigatewayv2_route.health" \
+          -target="aws_cloudwatch_log_group.lambda" \
+          -target="aws_cloudwatch_log_group.api_gateway" \
+          -target="aws_iam_role.lambda" \
+          -target="aws_iam_role_policy.lambda_logs" \
+          -target="aws_iam_role_policy_attachment.lambda_basic" \
+          -target="aws_lambda_permission.api_gateway"; then
+          echo "✅ Recursos principais aplicados com sucesso!"
         else
-          echo "❌ Erro no terraform apply"
-          echo "📋 Verificando estado atual..."
-          terraform state list || echo "Nenhum estado encontrado"
-          exit 1
+          echo "⚠️ Apply com targets falhou, tentando apply do plano..."
+          if terraform apply -auto-approve tfplan; then
+            echo "✅ Terraform apply executado com sucesso!"
+          else
+            echo "❌ Erro no terraform apply"
+            echo "📋 Verificando estado atual..."
+            terraform state list || echo "Nenhum estado encontrado"
+            
+            # Tentar identificar o recurso problemático
+            echo "📋 Verificando recursos OIDC..."
+            terraform state show aws_iam_role.github_actions 2>/dev/null || echo "Role GitHub Actions não encontrada no estado"
+            
+            exit 1
+          fi
         fi
       working-directory: terraform
       
