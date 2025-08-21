@@ -329,7 +329,7 @@ coverage.xml
 *.ipynb
 
 # Local Terraform backend config
-backend.tf
+#backend.tf
 backend.hcl
 
 # Local AWS credentials (never commit these!)
