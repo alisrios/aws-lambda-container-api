@@ -7,6 +7,6 @@ terraform {
     bucket = "bucket-state-locking"
     key    = "lambda-container-api/terraform.tfstate"
     region = "us-east-1"
-    use_lockfile = true 
+    #use_lockfile = true 
   }
 }
