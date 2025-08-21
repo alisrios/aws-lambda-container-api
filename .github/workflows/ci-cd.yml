@@ -439,19 +439,108 @@ jobs:
         terraform_version: ${{ env.TERRAFORM_VERSION }}
         terraform_wrapper: false
         
+    - name: Debug Information
+      run: |
+        echo "🔍 Informações de Debug:"
+        echo "   - Working Directory: $(pwd)"
+        echo "   - AWS Region: ${{ env.AWS_REGION }}"
+        echo "   - Image URI: ${{ needs.build-and-push.outputs.image-uri }}"
+        echo "   - Image Tag: ${{ needs.build-and-push.outputs.image-tag }}"
+        echo "   - ECR Repository: ${{ needs.build-and-push.outputs.ecr-repository }}"
+        echo "   - GitHub Repository: ${{ github.repository }}"
+        echo "   - GitHub SHA: ${{ github.sha }}"
+        echo ""
+        echo "📁 Estrutura do diretório:"
+        find . -name "*.tf" -o -name "*.tfvars" | head -20
+        
+    - name: Check Terraform files
+      run: |
+        echo "🔍 Verificando arquivos Terraform..."
+        ls -la
+        echo ""
+        echo "📋 Conteúdo dos arquivos principais:"
+        if [ -f "main.tf" ]; then
+          echo "✅ main.tf encontrado"
+        else
+          echo "❌ main.tf não encontrado"
+          exit 1
+        fi
+        
+        if [ -f "backend.tf" ]; then
+          echo "✅ backend.tf encontrado"
+        else
+          echo "❌ backend.tf não encontrado"
+          exit 1
+        fi
+        
+        if [ -f "variables.tf" ]; then
+          echo "✅ variables.tf encontrado"
+        else
+          echo "⚠️ variables.tf não encontrado - criando arquivo básico"
+          cat > variables.tf << 'EOF'
+        variable "project_name" {
+          description = "Nome do projeto"
+          type        = string
+          default     = "lambda-container-api"
+        }
+        
+        variable "environment" {
+          description = "Ambiente (dev, staging, prod)"
+          type        = string
+          default     = "dev"
+        }
+        
+        variable "aws_region" {
+          description = "Região AWS"
+          type        = string
+          default     = "us-east-1"
+        }
+        
+        variable "ecr_image_tag" {
+          description = "Tag da imagem ECR"
+          type        = string
+          default     = "latest"
+        }
+        
+        variable "ecr_repository_name" {
+          description = "Nome do repositório ECR"
+          type        = string
+          default     = "lambda-container-api-dev"
+        }
+        EOF
+        fi
+      working-directory: terraform
+        
     - name: Terraform Format Check
       id: fmt
       run: terraform fmt -check -recursive
       working-directory: terraform
       continue-on-error: true
       
+    - name: Check Backend Configuration
+      run: |
+        echo "🔍 Verificando configuração do backend..."
+        if [ -f "backend.tf" ]; then
+          echo "📋 Conteúdo do backend.tf:"
+          cat backend.tf
+        else
+          echo "❌ Arquivo backend.tf não encontrado!"
+          exit 1
+        fi
+      working-directory: terraform
+        
     - name: Terraform Init
       id: init
       run: |
-        terraform init \
-          -backend-config="bucket=${{ vars.TERRAFORM_STATE_BUCKET }}" \
-          -backend-config="key=${{ github.repository }}/terraform.tfstate" \
-          -backend-config="region=${{ env.AWS_REGION }}"
+        echo "🔄 Inicializando Terraform..."
+        if terraform init; then
+          echo "✅ Terraform inicializado com sucesso!"
+        else
+          echo "❌ Erro na inicialização do Terraform"
+          echo "📋 Verificando configuração..."
+          ls -la
+          exit 1
+        fi
       working-directory: terraform
       
     - name: Terraform Validate
@@ -462,13 +551,17 @@ jobs:
     - name: Terraform Plan
       id: plan
       run: |
-        terraform plan -no-color -input=false \
-          -var="ecr_image_tag=${{ needs.build-and-push.outputs.image-tag }}" \
-          -var="ecr_repository_name=${{ needs.build-and-push.outputs.ecr-repository }}" \
-          -var="environment=dev" \
-          -var="github_repository=${{ github.repository }}" \
-          -var="terraform_state_bucket=${{ vars.TERRAFORM_STATE_BUCKET }}" \
-          -out=tfplan
+        # Criar arquivo terraform.tfvars com as variáveis necessárias
+        cat > terraform.tfvars << EOF
+        project_name = "lambda-container-api"
+        environment = "dev"
+        aws_region = "${{ env.AWS_REGION }}"
+        ecr_image_tag = "${{ needs.build-and-push.outputs.image-tag }}"
+        ecr_repository_name = "${{ needs.build-and-push.outputs.ecr-repository }}"
+        EOF
+        
+        # Executar terraform plan
+        terraform plan -no-color -input=false -out=tfplan
       working-directory: terraform
       continue-on-error: true
       
@@ -503,15 +596,43 @@ jobs:
       if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
       id: apply
       run: |
-        terraform apply -auto-approve tfplan
+        echo "🚀 Aplicando mudanças do Terraform..."
+        if terraform apply -auto-approve tfplan; then
+          echo "✅ Terraform apply executado com sucesso!"
+        else
+          echo "❌ Erro no terraform apply"
+          echo "📋 Verificando estado atual..."
+          terraform state list || echo "Nenhum estado encontrado"
+          exit 1
+        fi
       working-directory: terraform
       
     - name: Get Terraform Outputs
       id: terraform-output
       if: steps.apply.outcome == 'success'
       run: |
-        echo "api_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
-        echo "lambda_function_name=$(terraform output -raw lambda_function_name)" >> $GITHUB_OUTPUT
+        echo "🔍 Verificando outputs do Terraform..."
+        terraform output
+        echo ""
+        
+        # Verificar se os outputs existem antes de tentar obtê-los
+        if terraform output api_gateway_url >/dev/null 2>&1; then
+          API_URL=$(terraform output -raw api_gateway_url)
+          echo "api_url=${API_URL}" >> $GITHUB_OUTPUT
+          echo "✅ API Gateway URL: ${API_URL}"
+        else
+          echo "⚠️ Output api_gateway_url não encontrado"
+          echo "api_url=not-available" >> $GITHUB_OUTPUT
+        fi
+        
+        if terraform output lambda_function_name >/dev/null 2>&1; then
+          LAMBDA_NAME=$(terraform output -raw lambda_function_name)
+          echo "lambda_function_name=${LAMBDA_NAME}" >> $GITHUB_OUTPUT
+          echo "✅ Lambda Function Name: ${LAMBDA_NAME}"
+        else
+          echo "⚠️ Output lambda_function_name não encontrado"
+          echo "lambda_function_name=not-available" >> $GITHUB_OUTPUT
+        fi
       working-directory: terraform
       
     - name: Handle Terraform Errors
