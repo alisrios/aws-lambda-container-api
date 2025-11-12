@@ -1,11 +1,12 @@
 # 🧪 AWS Lambda Container API - Teste Técnico
 
-[![CI/CD Pipeline](https://github.com/your-username/aws-lambda-container-api/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/your-username/aws-lambda-container-api/actions)
+[![CI/CD Pipeline](https://github.com/lisrios/aws-lambda-container-api/actions/workflows/pipeline.yml/badge.svg)](https://github.com/lisrios/aws-lambda-container-api/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
 [![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
 [![AWS Lambda](https://img.shields.io/badge/AWS-%23FF9900.svg?style=flat&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/lambda/)
 [![Terraform](https://img.shields.io/badge/terraform-%235835CC.svg?style=flat&logo=terraform&logoColor=white)](https://www.terraform.io/)
+[![Coverage](https://img.shields.io/badge/coverage-87%25-brightgreen.svg)](./htmlcov/index.html)
 
 ## 📋 Sobre o Projeto
 
@@ -289,34 +290,50 @@ cd terraform
 ### Pipeline Execution
 
 O pipeline é executado automaticamente em:
-- **Push** para branches `main` e `develop`
-- **Pull Requests** para `main` e `develop`
+- **Push** para branch `main`
+- **Pull Requests** para `main`
+- **Workflow Dispatch** (execução manual)
 
 ### Stages do Pipeline
 
 1. **🧪 Test and Quality Checks**
-   - Lint do código Python (flake8, black)
-   - Testes unitários (pytest)
-   - Coverage report
-   - Security scan (bandit)
+   - Formatação de código (Black, isort)
+   - Lint do código Python (flake8)
+   - Testes unitários com pytest
+   - Testes de integração
+   - Coverage report (mínimo 85%)
+   - Upload de relatórios para Codecov
 
-2. **🐳 Build and Push Docker**
-   - Build da imagem Docker
-   - Scan de vulnerabilidades (Trivy)
-   - Push para Amazon ECR
-   - Tag com commit hash
+2. **🔒 Security Scanning**
+   - Safety check (vulnerabilidades em dependências)
+   - Bandit (análise de segurança do código)
+   - Semgrep (análise avançada de segurança)
+   - Upload de relatórios de segurança
+   - Geração de SBOM (Software Bill of Materials)
 
-3. **🏗️ Infrastructure Deploy**
+3. **🐳 Build and Push Docker**
+   - Build da imagem Docker otimizada para Lambda (linux/amd64)
+   - Criação automática do repositório ECR se não existir
+   - Testes da imagem Docker
+   - Scan de vulnerabilidades com Trivy
+   - Push para Amazon ECR com tags (latest e commit hash)
+   - Atualização automática da função Lambda se existir
+   - Geração de SBOM
+
+4. **🏗️ Infrastructure Deploy**
+   - Verificação e correção automática de configuração
+   - Terraform init com múltiplas estratégias de fallback
    - Terraform validate
-   - Terraform plan
+   - Terraform plan com targets específicos
    - Terraform apply (auto-approve em main)
-   - Update Lambda function code
+   - Aplicação seletiva de recursos (evita conflitos OIDC)
+   - Extração de outputs (API URL, Lambda name)
 
-4. **✅ Integration Tests**
+5. **✅ E2E Tests** (em desenvolvimento)
    - Testes end-to-end na API deployada
-   - Health checks básicos e avançados
-   - Testes de headers (flexíveis para recursos opcionais)
-   - Performance tests com fallback automático
+   - Health checks
+   - Testes de performance
+   - Validação de monitoramento
 
 ### Configuração do CI/CD
 
@@ -325,16 +342,17 @@ O pipeline é executado automaticamente em:
 1. **Configurar Infraestrutura OIDC**:
 ```bash
 cd terraform
-../scripts/setup-github-oidc.sh
+terraform apply -target="aws_iam_openid_connect_provider.github" -target="aws_iam_role.github_actions"
 ```
 
 2. **Configurar Repository Variables no GitHub**:
    - Acesse: `Settings > Secrets and variables > Actions > Variables`
-   - Adicione as seguintes **Repository Variables**:
+   - Adicione a seguinte **Repository Variable**:
 ```
 AWS_ROLE_TO_ASSUME = arn:aws:iam::ACCOUNT_ID:role/lambda-container-api-dev-github-actions-role
-TERRAFORM_STATE_BUCKET = your-terraform-state-bucket-name
 ```
+
+**Nota**: O bucket do Terraform state (`bucket-state-locking`) é configurado automaticamente pelo pipeline.
 
 #### Configuração Alternativa (Access Keys)
 
@@ -350,13 +368,13 @@ AWS_REGION=us-east-1
 
 #### Arquivo de Pipeline
 
-O pipeline está definido em `.github/workflows/ci-cd.yml` e inclui:
+O pipeline está definido em `.github/workflows/pipeline.yml` e inclui:
 
-- **Triggers**: Push e PR para main/develop
-- **Matrix Strategy**: Testes em múltiplas versões Python
-- **Caching**: Dependencies e Docker layers
-- **Artifacts**: Reports de teste e coverage
-- **Notifications**: Status do deploy
+- **Triggers**: Push e PR para main, workflow dispatch
+- **Caching**: Dependencies pip e Docker layers
+- **Artifacts**: Reports de teste, coverage e segurança
+- **SBOM**: Geração automática de Software Bill of Materials
+- **Auto-correção**: Detecção e correção automática de problemas comuns
 
 ### Monitoramento
 
@@ -369,21 +387,33 @@ O pipeline está definido em `.github/workflows/ci-cd.yml` e inclui:
 
 #### 🔧 Robustez e Confiabilidade
 - **Auto-detecção de contexto**: Pipeline detecta se está executando via GitHub Actions
-- **Múltiplas estratégias de inicialização**: Terraform init com fallbacks automáticos
+- **Múltiplas estratégias de inicialização**: Terraform init com 3 estratégias de fallback
 - **Limpeza automática de cache**: Remove cache corrompido automaticamente
 - **Correção automática de configuração**: Corrige backend.tf se necessário
+- **Criação automática de ECR**: Cria repositório ECR se não existir
+- **Atualização automática de Lambda**: Atualiza função Lambda após build
 
-#### 🧪 Testes Flexíveis
-- **Headers opcionais**: Testes não falham por headers de monitoramento ausentes
-- **Fallback para scripts**: Performance tests com alternativas se scripts não existirem
-- **Validação essencial**: Foco na funcionalidade principal da API
-- **Informações úteis**: Relatórios sobre recursos opcionais implementados
+#### 🧪 Testes Abrangentes
+- **Testes unitários**: Cobertura de 87% do código
+- **Testes de integração**: Validação de fluxos completos
+- **Testes E2E**: Validação da API deployada (em desenvolvimento)
+- **Testes de segurança**: Safety, Bandit e Semgrep
+- **Testes de vulnerabilidades**: Trivy scan em imagens Docker
 
 #### 🔐 Segurança Aprimorada
-- **Permissões granulares**: Evita conflitos circulares de permissões OIDC
+- **OIDC Authentication**: Sem credenciais de longo prazo
+- **Permissões granulares**: Evita conflitos circulares de permissões
 - **Apply com targets**: Aplica apenas recursos necessários no pipeline
 - **Detecção de role**: Identifica automaticamente contexto de execução
-- **Logs de debug**: Informações detalhadas para troubleshooting
+- **Scanning completo**: Código, dependências e containers
+- **SBOM Generation**: Rastreabilidade completa de componentes
+
+#### 📊 Observabilidade
+- **Logs estruturados**: JSON logging para melhor análise
+- **CloudWatch Dashboard**: Métricas em tempo real
+- **Alertas configurados**: SNS notifications para erros
+- **X-Ray Tracing**: Rastreamento de requisições
+- **Coverage Reports**: Relatórios HTML e XML
 
 ## 🏗️ Arquitetura da Solução
 
@@ -428,6 +458,44 @@ lambda_function_name = "lambda-container-api-dev"
 ecr_repository_url = "148761658767.dkr.ecr.us-east-1.amazonaws.com/lambda-container-api-dev"
 ```
 
+## � LEstrutura de Testes
+
+O projeto possui uma suite completa de testes organizada em três níveis:
+
+### Testes Unitários (`tests/unit/`)
+- `test_app.py` - Testes dos endpoints Flask
+- `test_lambda_handler.py` - Testes do handler Lambda
+- `test_monitoring.py` - Testes de monitoramento
+
+### Testes de Integração (`tests/integration/`)
+- `test_api_endpoints.py` - Testes de integração dos endpoints
+- `test_monitoring_integration.py` - Testes de integração de monitoramento
+
+### Testes E2E (`tests/e2e/`)
+- `test_deployed_api.py` - Testes da API deployada
+- `test_monitoring_e2e.py` - Testes E2E de monitoramento
+- `test_monitoring.py` - Testes de monitoramento completo
+- `test_performance.py` - Testes de performance
+
+### Executar Testes
+
+```bash
+# Todos os testes
+pytest
+
+# Apenas testes unitários
+pytest tests/unit/
+
+# Apenas testes de integração
+pytest tests/integration/
+
+# Com coverage
+pytest --cov=src --cov-report=html --cov-report=term-missing
+
+# Testes E2E (requer API deployada)
+pytest tests/e2e/
+```
+
 ## 🧹 Limpeza de Recursos
 
 ⚠️ **IMPORTANTE**: Para evitar custos, sempre execute o destroy após os testes:
@@ -460,7 +528,7 @@ terraform destroy
 
 ```bash
 # Limpar backend S3 (cuidado com outros projetos)
-# aws s3 rb s3://terraform-state-lambda-container-api-TIMESTAMP --force
+# aws s3 rb s3://bucket-state-locking --force
 ```
 
 ## 📈 Métricas de Performance
@@ -469,53 +537,88 @@ terraform destroy
 - **Warm Executions**: ~1.5-3.6ms (execuções subsequentes)
 - **Memory Usage**: ~62MB (de 512MB alocados)
 - **Image Size**: ~1.04GB (otimizada para Lambda)
-- **Test Coverage**: >85%
+- **Test Coverage**: 87% (mínimo 85%)
+- **Pipeline Duration**: ~8-12 minutos (completo)
+- **Build Time**: ~3-5 minutos
+- **Deploy Time**: ~2-4 minutos
 
 ## 🔧 Versões e Compatibilidade
 
 ### Versões Utilizadas
 - **Python**: 3.11
-- **Terraform**: 1.6.0 (atualizado para resolver bugs)
+- **Terraform**: 1.6.0 (atualizado para resolver bugs de estado)
 - **AWS Provider**: ~> 5.0
 - **Docker**: Multi-stage build otimizado
-- **GitHub Actions**: Latest stable versions
+- **GitHub Actions**: v4/v5 (latest stable)
+- **Flask**: 2.3.3
+- **Pytest**: 7.4.2
+- **Black**: 23.9.1
+- **Flake8**: 6.1.0
 
 ### Compatibilidade
 - **AWS Regions**: Testado em us-east-1, compatível com outras regiões
 - **Terraform Versions**: 1.6.0+ (versões anteriores podem ter problemas)
 - **Python Versions**: 3.11+ recomendado
 - **Docker Platforms**: linux/amd64 (requerido para Lambda)
+- **OS**: Linux, macOS, Windows (com WSL2 ou PowerShell)
 
 ## 🛠️ Estrutura do Projeto
 
 ```
 aws-lambda-container-api/
-├── .github/workflows/ci-cd.yml    # Pipeline CI/CD robusto
+├── .github/
+│   └── workflows/
+│       └── pipeline.yml           # Pipeline CI/CD completo
 ├── src/
-│   ├── app.py                     # Flask API
+│   ├── app.py                     # Flask API com endpoints
 │   ├── lambda_function.py         # Lambda handler
-│   └── requirements.txt           # Dependencies
+│   └── requirements.txt           # Dependências Python
+├── tests/
+│   ├── unit/                      # Testes unitários
+│   │   ├── test_app.py
+│   │   ├── test_lambda_handler.py
+│   │   └── test_monitoring.py
+│   ├── integration/               # Testes de integração
+│   │   ├── test_api_endpoints.py
+│   │   └── test_monitoring_integration.py
+│   ├── e2e/                       # Testes end-to-end
+│   │   ├── test_deployed_api.py
+│   │   ├── test_monitoring_e2e.py
+│   │   ├── test_monitoring.py
+│   │   └── test_performance.py
+│   ├── conftest.py                # Configuração de testes
+│   └── README.md                  # Documentação dos testes
 ├── terraform/
-│   ├── main.tf                    # Infrastructure
-│   ├── backend.tf                 # S3 backend config (corrigido)
-│   ├── variables.tf               # Variables
-│   ├── outputs.tf                 # Outputs
-│   ├── oidc.tf                    # OIDC configuration
-│   └── versions.tf                # Provider versions
+│   ├── main.tf                    # Infraestrutura principal
+│   ├── backend.tf                 # Configuração S3 backend
+│   ├── variables.tf               # Variáveis do Terraform
+│   ├── outputs.tf                 # Outputs do Terraform
+│   ├── oidc.tf                    # Configuração OIDC
+│   ├── versions.tf                # Versões dos providers
+│   └── scripts/                   # Scripts auxiliares
 ├── scripts/
-│   ├── setup-terraform-backend.sh # Backend setup (sem DynamoDB)
-│   ├── create-ecr-repository.sh   # ECR repository creation
-│   ├── force-destroy.sh           # Cleanup script
-│   └── test-api.sh                # API testing
-├── docs/
-│   ├── PIPELINE_CHANGES.md        # Mudanças no pipeline
-│   ├── TERRAFORM_ERROR_FIX.md     # Correções Terraform
-│   ├── OIDC_PERMISSION_FIX.md     # Correções OIDC
-│   └── E2E_TESTS_FIX.md          # Correções testes E2E
-├── Dockerfile                     # Container config
-├── docker-compose.yml             # Local development
-├── build-and-push.sh             # Build script
-└── README.md                     # This file (atualizado)
+│   ├── setup-terraform-backend.sh # Setup do backend S3
+│   ├── create-ecr-repository.sh   # Criação do repositório ECR
+│   ├── force-destroy.sh           # Limpeza de recursos
+│   ├── test-api.sh                # Testes da API
+│   ├── build-and-push.ps1         # Build para Windows
+│   ├── fix-lambda-image.sh        # Correção de imagem Lambda
+│   ├── test_deployed_api.py       # Testes da API deployada
+│   ├── validate_monitoring.py     # Validação de monitoramento
+│   └── validate_performance.py    # Validação de performance
+├── htmlcov/                       # Relatórios de coverage
+├── Dockerfile                     # Container para Lambda
+├── Dockerfile.test                # Container para testes
+├── docker-compose.yml             # Ambiente local
+├── build-and-push.sh             # Script de build e push
+├── server.py                      # Servidor de testes local
+├── test.html                      # Interface de testes
+├── run_local.py                   # Execução local
+├── run_tests.py                   # Execução de testes
+├── pytest.ini                     # Configuração pytest
+├── requirements-dev.txt           # Dependências de desenvolvimento
+├── .pre-commit-config.yaml        # Hooks de pre-commit
+└── README.md                      # Esta documentação
 ```
 
 ## 🔧 Troubleshooting
