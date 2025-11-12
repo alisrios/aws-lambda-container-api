@@ -284,7 +284,7 @@ O projeto inclui um pipeline completo de CI/CD com **GitHub Actions** que utiliz
 ```bash
 # Executar script de configuração automática
 cd terraform
-../scripts/setup-github-oidc.sh
+./scripts/setup-github-oidc.sh
 ```
 
 ### Pipeline Execution
