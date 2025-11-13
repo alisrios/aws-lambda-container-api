@@ -163,16 +163,9 @@ curl $(terraform output -raw api_gateway_url)/hello
 curl "$(terraform output -raw api_gateway_url)/echo?msg=teste"
 ```
 
-### 🚀 Script de Deploy Completo (Alternativa)
+### 🚀 Deploy Manual Passo a Passo
 
-Para executar todos os passos de uma vez, você pode usar:
-
-```bash
-# Deploy completo automatizado
-./scripts/full-deploy.sh
-```
-
-Ou executar manualmente na ordem:
+Execute os comandos na ordem:
 
 ```bash
 # 1. Configurar backend
@@ -189,6 +182,8 @@ cd terraform
 terraform apply
 cd ..
 ```
+
+**Nota**: No Windows, use `.\scripts\build-and-push.ps1` para o build da imagem.
 
 ## 🧪 Como Testar a API
 
